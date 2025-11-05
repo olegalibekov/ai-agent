@@ -2,6 +2,7 @@ import os
 import json
 import html
 import logging
+from collections import defaultdict, deque
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI, BadRequestError
@@ -24,13 +25,13 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 SYSTEM_PROMPT = (
     "You are a helpful assistant. "
     "Return only JSON with book information in the format:\n"
-    "{'answer': {'title': '...', 'description': '...', 'author': '...', 'rating': 0-10}}\n"
+    "{'answer': {'title': '...', 'description': '...', 'author': '...'}}\n"
 )
 
 RESPONSE_JSON_SCHEMA = {
     "type": "json_schema",
     "json_schema": {
-        "name": "BookRatingResponse",
+        "name": "BookInfoResponse",
         "schema": {
             "type": "object",
             "properties": {
@@ -40,9 +41,8 @@ RESPONSE_JSON_SCHEMA = {
                         "title": {"type": "string"},
                         "description": {"type": "string"},
                         "author": {"type": "string"},
-                        "rating": {"type": "number", "minimum": 0, "maximum": 10},
                     },
-                    "required": ["title", "description", "author", "rating"],
+                    "required": ["title", "description", "author"],
                 }
             },
             "required": ["answer"],
@@ -50,29 +50,51 @@ RESPONSE_JSON_SCHEMA = {
     },
 }
 
+# ---------- История сообщений ----------
+HISTORY_LEN = 6
+history: dict[int, deque] = defaultdict(lambda: deque(maxlen=HISTORY_LEN))
+
+def make_messages(chat_id: int, user_text: str):
+    """Собираем список сообщений: system + история + новое сообщение пользователя."""
+    msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
+    msgs += list(history[chat_id])
+    msgs.append({"role": "user", "content": user_text})
+    return msgs
+
 # ---------- Хэндлеры ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Напиши название книги 📚")
 
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Очистка истории контекста."""
+    history.pop(update.effective_chat.id, None)
+    await update.message.reply_text("Контекст очищен. 🧹")
+
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    chat_id = update.effective_chat.id
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
     user_text = update.message.text.strip()
 
     try:
+        messages = make_messages(chat_id, user_text)
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_text},
-            ],
+            messages=messages,
             response_format=RESPONSE_JSON_SCHEMA,
         )
+
         data = json.loads(resp.choices[0].message.content)
         book = data["answer"]
+
         text = (
-            f"<b>{html.escape(book['title'])}</b> — {html.escape(book['author'])}\n"
-            f"Rating: {book['rating']}/10\n\n{html.escape(book['description'])}"
+            f"<b>{html.escape(book['title'])}</b> — {html.escape(book['author'])}\n\n"
+            f"{html.escape(book['description'])}"
         )
+
+        # сохраняем в историю
+        history[chat_id].append({"role": "user", "content": user_text})
+        history[chat_id].append({"role": "assistant", "content": resp.choices[0].message.content})
+
     except BadRequestError as e:
         logging.error(e)
         text = "Ошибка запроса. Попробуй другое сообщение."
@@ -86,6 +108,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("reset", reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
     logging.info("Бот запущен")
     app.run_polling()
