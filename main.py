@@ -22,15 +22,14 @@ logging.basicConfig(
 )
 
 # ---------- Env ----------
-# Load .env next to this file, regardless of IDE cwd
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-OPENAI_FALLBACK_MODEL = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-4o-mini")  # can be same or cheaper
+OPENAI_FALLBACK_MODEL = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-4o-mini")
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a helpful Telegram assistant. Keep replies concise.")
-HISTORY_LEN = int(os.getenv("HISTORY_LEN", "6"))  # shorter = cheaper
+HISTORY_LEN = int(os.getenv("HISTORY_LEN", "6"))
 
 if not BOT_TOKEN or not OPENAI_API_KEY:
     raise RuntimeError("BOT_TOKEN and OPENAI_API_KEY must be set in .env")
@@ -69,37 +68,81 @@ def _is_insufficient_quota(err: Exception) -> bool:
     except Exception:
         return False
 
+def _to_responses_input(messages):
+    """
+    Convert chat-like [{'role','content': str}] into Responses API format.
+    IMPORTANT: role -> type mapping:
+      - user/system -> input_text
+      - assistant   -> output_text
+    """
+    converted = []
+    for m in messages:
+        role = m.get("role", "user")
+        text = m.get("content", "")
+        if not isinstance(text, str):
+            text = str(text)
+
+        content_type = "output_text" if role == "assistant" else "input_text"
+
+        converted.append({
+            "role": role,
+            "content": [{"type": content_type, "text": text}],
+        })
+    return converted
+
 def _try_openai(messages):
-    """Try primary model, then fallback if quota/rate limits hit."""
+    """Try primary model, then fallback if quota/rate limits hit. Uses Responses API."""
     last_err = None
+    responses_input = _to_responses_input(messages)
+
     for model in (OPENAI_MODEL, OPENAI_FALLBACK_MODEL):
         for attempt in range(3):
             try:
-                return client.chat.completions.create(
+                resp = client.responses.create(
                     model=model,
-                    messages=messages,
+                    input=responses_input,
                     temperature=0.6,
                 )
+
+                # Основной способ извлечь текст в новом SDK:
+                reply = getattr(resp, "output_text", None)
+
+                # Запасной парсер (если по какой-то причине output_text пуст)
+                if not reply:
+                    try:
+                        chunks = []
+                        for item in getattr(resp, "output", []) or []:
+                            for c in getattr(item, "content", []) or []:
+                                # для ассистента это обычно type == "output_text"
+                                t = getattr(c, "text", None)
+                                if t:
+                                    chunks.append(t)
+                        reply = "".join(chunks).strip() if chunks else None
+                    except Exception:
+                        reply = None
+
+                if not reply:
+                    raise RuntimeError("No text in Responses API reply")
+
+                return reply
+
             except RateLimitError as e:
-                # if it's pure quota exhaustion, no point retrying too much
                 if _is_insufficient_quota(e):
                     last_err = e
                     break
-                # transient rate limit—backoff and retry
                 last_err = e
                 if attempt < 2:
                     _sleep_backoff(attempt)
                 else:
                     break
             except (APIStatusError, BadRequestError, AuthenticationError) as e:
-                # don't retry bad requests or auth errors
                 last_err = e
                 break
             except Exception as e:
                 last_err = e
                 break
-        # if primary failed, try fallback model next loop
-    raise last_err or RuntimeError("Unknown error calling OpenAI")
+
+    raise last_err or RuntimeError("Unknown error calling OpenAI Responses API")
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -112,20 +155,16 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         messages = make_messages(chat_id, user_text)
+        reply = _try_openai(messages)
 
-        completion = _try_openai(messages)
-        reply = completion.choices[0].message.content.strip()
-
-        # ---- log user text and model answer (raw) ----
         user_tag = f"{user.id} @{user.username or ''} {user.full_name or ''}".strip()
         logging.info("CHAT %s | msg_id=%s | user_text=%s", user_tag, update.message.message_id, user_text)
         logging.info("CHAT %s | reply=%s", user_tag, reply)
 
-        # keep history (after success)
+        # сохраняем историю (важно: в истории храним просто role/content, маппинг сделает конвертер)
         history[chat_id].append({"role": "user", "content": user_text})
         history[chat_id].append({"role": "assistant", "content": reply})
 
-        # send safe HTML
         safe_reply = html.escape(reply)
         await update.message.reply_text(safe_reply, parse_mode=ParseMode.HTML)
 
@@ -142,7 +181,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Auth error with the AI provider. Check the API key on the server.")
 
     except BadRequestError as e:
-        # often invalid model, too-long context, or entity parsing issues
         logging.error("BadRequestError: %s\n%s", e, traceback.format_exc())
         await update.message.reply_text("Request was rejected by the AI API (bad request). Try shorter input or /reset.")
 
