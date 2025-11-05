@@ -4,6 +4,7 @@ import random
 import logging
 import traceback
 import html
+import json
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -28,7 +29,16 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_FALLBACK_MODEL = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-4o-mini")
-SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a helpful Telegram assistant. Keep replies concise.")
+
+# Короткий system-промпт (основное ограничение формата обеспечит JSON Schema ниже)
+SYSTEM_PROMPT = os.getenv(
+    "SYSTEM_PROMPT",
+    (
+        "You are a helpful Telegram assistant. Keep replies concise.\n"
+        "Always respond with a JSON object that matches the provided JSON Schema."
+    ),
+)
+
 HISTORY_LEN = int(os.getenv("HISTORY_LEN", "6"))
 
 if not BOT_TOKEN or not OPENAI_API_KEY:
@@ -36,6 +46,26 @@ if not BOT_TOKEN or not OPENAI_API_KEY:
 
 # ---------- OpenAI client ----------
 client = OpenAI()  # reads OPENAI_API_KEY from env
+
+# ---------- Structured Outputs JSON Schema ----------
+# В этой версии SDK 'required' должен включать все свойства. Даём дефолты, чтобы модель всегда была валидной.
+RESPONSE_JSON_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "TelegramReply",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "answer":    {"type": "string", "default": ""},
+                "notes":     {"type": "string", "default": ""},
+                "citations": {"type": "array", "items": {"type": "string"}, "default": []}
+            },
+            "required": ["answer", "notes", "citations"],
+            "additionalProperties": False
+        },
+        "strict": True
+    }
+}
 
 # ---------- In-memory conversation state (per chat) ----------
 history: dict[int, deque] = defaultdict(lambda: deque(maxlen=HISTORY_LEN))
@@ -71,7 +101,7 @@ def _is_insufficient_quota(err: Exception) -> bool:
 def _to_responses_input(messages):
     """
     Convert chat-like [{'role','content': str}] into Responses API format.
-    IMPORTANT: role -> type mapping:
+    role -> type mapping:
       - user/system -> input_text
       - assistant   -> output_text
     """
@@ -81,9 +111,7 @@ def _to_responses_input(messages):
         text = m.get("content", "")
         if not isinstance(text, str):
             text = str(text)
-
         content_type = "output_text" if role == "assistant" else "input_text"
-
         converted.append({
             "role": role,
             "content": [{"type": content_type, "text": text}],
@@ -91,58 +119,86 @@ def _to_responses_input(messages):
     return converted
 
 def _try_openai(messages):
-    """Try primary model, then fallback if quota/rate limits hit. Uses Responses API."""
+    """
+    Try primary model, then fallback if quota/rate limits hit.
+    Prefers Responses API + JSON Schema. If this SDK build doesn't support
+    response_format in Responses API, falls back to Chat Completions API.
+    Returns either dict (parsed JSON) or str.
+    """
     last_err = None
-    responses_input = _to_responses_input(messages)
+
+    # Подготовим payload’ы под оба эндпоинта
+    responses_input = _to_responses_input(messages)  # for Responses API
+    chat_input = [{"role": m["role"], "content": m["content"]} for m in messages]  # for Chat Completions
 
     for model in (OPENAI_MODEL, OPENAI_FALLBACK_MODEL):
-        for attempt in range(3):
+        # ---- 1) Попытка через Responses API (предпочтительно) ----
+        try:
+            resp = client.responses.create(
+                model=model,
+                input=responses_input,
+                temperature=0.6,
+                response_format=RESPONSE_JSON_SCHEMA,  # может быть не поддержан в твоём билде
+            )
+            text = getattr(resp, "output_text", None)
+            if not text:
+                # запасной парсер
+                chunks = []
+                for item in getattr(resp, "output", []) or []:
+                    for c in getattr(item, "content", []) or []:
+                        t = getattr(c, "text", None)
+                        if t:
+                            chunks.append(t)
+                text = "".join(chunks).strip() if chunks else None
+            if not text:
+                raise RuntimeError("No text from Responses API")
+
             try:
-                resp = client.responses.create(
-                    model=model,
-                    input=responses_input,
-                    temperature=0.6,
-                )
+                return json.loads(text)
+            except Exception:
+                return text
 
-                # Основной способ извлечь текст в новом SDK:
-                reply = getattr(resp, "output_text", None)
+        except TypeError as e:
+            # Ключевой случай: "unexpected keyword argument 'response_format'"
+            if "response_format" in str(e):
+                # ---- 2) Фолбэк: Chat Completions API с тем же response_format ----
+                try:
+                    chat_resp = client.chat.completions.create(
+                        model=model,
+                        messages=chat_input,
+                        temperature=0.6,
+                        response_format=RESPONSE_JSON_SCHEMA,
+                    )
+                    text = chat_resp.choices[0].message.content if chat_resp.choices else ""
+                    if not text:
+                        raise RuntimeError("No text from Chat Completions")
 
-                # Запасной парсер (если по какой-то причине output_text пуст)
-                if not reply:
                     try:
-                        chunks = []
-                        for item in getattr(resp, "output", []) or []:
-                            for c in getattr(item, "content", []) or []:
-                                # для ассистента это обычно type == "output_text"
-                                t = getattr(c, "text", None)
-                                if t:
-                                    chunks.append(t)
-                        reply = "".join(chunks).strip() if chunks else None
+                        return json.loads(text)
                     except Exception:
-                        reply = None
-
-                if not reply:
-                    raise RuntimeError("No text in Responses API reply")
-
-                return reply
-
-            except RateLimitError as e:
-                if _is_insufficient_quota(e):
-                    last_err = e
-                    break
-                last_err = e
-                if attempt < 2:
-                    _sleep_backoff(attempt)
-                else:
-                    break
-            except (APIStatusError, BadRequestError, AuthenticationError) as e:
-                last_err = e
-                break
-            except Exception as e:
+                        return text
+                except Exception as e2:
+                    last_err = e2
+                    break  # нет смысла ретраить
+            else:
                 last_err = e
                 break
 
-    raise last_err or RuntimeError("Unknown error calling OpenAI Responses API")
+        except RateLimitError as e:
+            if _is_insufficient_quota(e):
+                last_err = e
+                break
+            last_err = e
+            _sleep_backoff(0)
+            continue
+        except (APIStatusError, BadRequestError, AuthenticationError) as e:
+            last_err = e
+            break
+        except Exception as e:
+            last_err = e
+            break
+
+    raise last_err or RuntimeError("Unknown error calling OpenAI API")
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -155,17 +211,30 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         messages = make_messages(chat_id, user_text)
-        reply = _try_openai(messages)
+        model_reply = _try_openai(messages)
+
+        # Если пришёл dict (валидный JSON по схеме), достаём answer/notes/citations
+        if isinstance(model_reply, dict):
+            answer_text = model_reply.get("answer", "").strip()
+            notes = model_reply.get("notes", "")
+            citations = model_reply.get("citations", [])
+            logging.info("JSON reply parsed | notes=%s | citations=%s", notes, citations)
+            assistant_text_for_history = answer_text
+            text_to_send = answer_text or "(empty answer)"
+        else:
+            # Фолбэк: обычный текст
+            assistant_text_for_history = str(model_reply)
+            text_to_send = assistant_text_for_history
 
         user_tag = f"{user.id} @{user.username or ''} {user.full_name or ''}".strip()
         logging.info("CHAT %s | msg_id=%s | user_text=%s", user_tag, update.message.message_id, user_text)
-        logging.info("CHAT %s | reply=%s", user_tag, reply)
+        logging.info("CHAT %s | reply=%s", user_tag, assistant_text_for_history)
 
-        # сохраняем историю (важно: в истории храним просто role/content, маппинг сделает конвертер)
+        # В историю кладём человекочитаемый ответ ассистента
         history[chat_id].append({"role": "user", "content": user_text})
-        history[chat_id].append({"role": "assistant", "content": reply})
+        history[chat_id].append({"role": "assistant", "content": assistant_text_for_history})
 
-        safe_reply = html.escape(reply)
+        safe_reply = html.escape(text_to_send)
         await update.message.reply_text(safe_reply, parse_mode=ParseMode.HTML)
 
     except RateLimitError as e:
@@ -198,6 +267,7 @@ def main():
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(CommandHandler("ping", ping))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+    logging.info("Application started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
