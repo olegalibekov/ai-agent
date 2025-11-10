@@ -8,9 +8,8 @@ def main():
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    prompt = "Составь короткое поздравление с днем рождения"
-    # temperatures = [0, 0.5, 1, 1.5, 2]
-    temperatures = [0, 1, 1.9]
+    prompt = "Напиши короткое поздравление с днем рождения"
+    temperatures = [0, 1, 1.8]
 
     for temp in temperatures:
         print(f"\n{'=' * 50}")
@@ -19,9 +18,7 @@ def main():
 
         response = client.responses.create(
             model="gpt-4.1",
-            input=[
-                {"role": "user", "content": prompt}
-            ],
+            input=prompt,
             temperature=temp,
         )
 
@@ -35,3 +32,17 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
