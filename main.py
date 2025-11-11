@@ -81,6 +81,7 @@ TOKENIZER_FILES: Dict[str, List[str]] = {
     ],
 }
 
+
 # ========= DATA CLASSES =========
 @dataclass
 class RunResult:
@@ -168,6 +169,7 @@ def num_tokens(model: str, text: str, cache: Dict[str, PreTrainedTokenizerFast])
     if model not in cache:
         cache[model] = get_tokenizer(model)
     tok = cache[model]
+
     try:
         return len(tok.encode(text, add_special_tokens=False))
     except Exception:
@@ -208,7 +210,8 @@ def _router_model_inference(model: str, prompt: str) -> Dict[str, Any]:
     if resp.status_code == 200 and data is not None:
         return {"ok": True, "data": data}
     if data is None:
-        return {"ok": False, "error": f"Non-JSON response (classic). HTTP {resp.status_code}", "status": resp.status_code, "raw": resp.text[:400]}
+        return {"ok": False, "error": f"Non-JSON response (classic). HTTP {resp.status_code}",
+                "status": resp.status_code, "raw": resp.text[:400]}
     return {"ok": False, "error": f"HTTP {resp.status_code} (classic): {data}", "status": resp.status_code, "raw": data}
 
 
@@ -235,7 +238,8 @@ def _router_chat_completions(model: str, prompt: str) -> Dict[str, Any]:
     if resp.status_code == 200 and data is not None:
         return {"ok": True, "data": data}
     if data is None:
-        return {"ok": False, "error": f"Non-JSON response (chat). HTTP {resp.status_code}", "status": resp.status_code, "raw": resp.text[:400]}
+        return {"ok": False, "error": f"Non-JSON response (chat). HTTP {resp.status_code}", "status": resp.status_code,
+                "raw": resp.text[:400]}
     return {"ok": False, "error": f"HTTP {resp.status_code} (chat): {data}", "status": resp.status_code, "raw": data}
 
 
@@ -356,7 +360,8 @@ def pretty_print(results: List[RunResult]):
     print(header)
     print("-" * len(header))
     for r in results:
-        print(f"{r.model[:40]:40s} {r.latency_sec:10.3f} {r.input_tokens:6d} {r.output_tokens:6d} {r.total_tokens:7d} {r.cost_usd:8.4f}")
+        print(
+            f"{r.model[:40]:40s} {r.latency_sec:10.3f} {r.input_tokens:6d} {r.output_tokens:6d} {r.total_tokens:7d} {r.cost_usd:8.4f}")
         if r.error:
             print(f"   ERROR: {r.error}")
     print("\n▼ Краткий вывод по качеству (оценка вручную):\n"
