@@ -41,16 +41,8 @@ PROMPT = (
 
 # ========= GEN PARAMS =========
 GEN_PARAMS = {
-    "max_new_tokens": 320,
-    "temperature": 0.2,
-    "top_p": 0.9,
-    "repetition_penalty": 1.05,
-}
-
-# ========= PRICING (optional) =========
-COSTS_PER_1K = {
-    # "meta-llama/Llama-3.2-1B-Instruct": {"input": 0.2, "output": 0.6},
-    # "Qwen/Qwen2.5-7B-Instruct": {"input": 0.15, "output": 0.45},
+    "temperature": 0.3,
+    "repetition_penalty": 1.0,
 }
 
 # ========= HF Router endpoints =========
@@ -76,6 +68,7 @@ TOKENIZER_FILES: Dict[str, List[str]] = {
         # merges/vocab обычно не нужны, fast-версия берётся из tokenizer.json
     ],
 }
+
 
 # ========= DATA CLASSES =========
 @dataclass
@@ -141,6 +134,12 @@ def debug_tokenizer_sample(model: str, tok: PreTrainedTokenizerFast, sample: str
     except Exception:
         pass
 
+
+# ========= PRICING (optional) =========
+COSTS_PER_1K = {
+    # "meta-llama/Llama-3.2-1B-Instruct": {"input": 0.2, "output": 0.6},
+    # "Qwen/Qwen2.5-7B-Instruct": {"input": 0.15, "output": 0.45},
+}
 
 def get_tokenizer(model: str) -> PreTrainedTokenizerFast:
     """
@@ -220,7 +219,8 @@ def _router_model_inference(model: str, prompt: str) -> Dict[str, Any]:
     if resp.status_code == 200 and data is not None:
         return {"ok": True, "data": data}
     if data is None:
-        return {"ok": False, "error": f"Non-JSON response (classic). HTTP {resp.status_code}", "status": resp.status_code, "raw": resp.text[:400]}
+        return {"ok": False, "error": f"Non-JSON response (classic). HTTP {resp.status_code}",
+                "status": resp.status_code, "raw": resp.text[:400]}
     return {"ok": False, "error": f"HTTP {resp.status_code} (classic): {data}", "status": resp.status_code, "raw": data}
 
 
@@ -236,7 +236,7 @@ def _router_chat_completions(model: str, prompt: str) -> Dict[str, Any]:
         ],
         "temperature": GEN_PARAMS.get("temperature", 0.7),
         "top_p": GEN_PARAMS.get("top_p", 1.0),
-        "max_tokens": GEN_PARAMS.get("max_new_tokens", 256),
+        # "max_tokens": GEN_PARAMS.get("max_new_tokens", 256),
     }
     try:
         resp = requests.post(ROUTER_CHAT_URL, headers=HEADERS_JSON, data=json.dumps(payload), timeout=180)
@@ -247,7 +247,8 @@ def _router_chat_completions(model: str, prompt: str) -> Dict[str, Any]:
     if resp.status_code == 200 and data is not None:
         return {"ok": True, "data": data}
     if data is None:
-        return {"ok": False, "error": f"Non-JSON response (chat). HTTP {resp.status_code}", "status": resp.status_code, "raw": resp.text[:400]}
+        return {"ok": False, "error": f"Non-JSON response (chat). HTTP {resp.status_code}", "status": resp.status_code,
+                "raw": resp.text[:400]}
     return {"ok": False, "error": f"HTTP {resp.status_code} (chat): {data}", "status": resp.status_code, "raw": data}
 
 
@@ -368,9 +369,11 @@ def pretty_print(results: List[RunResult]):
     print(header)
     print("-" * len(header))
     for r in results:
-        print(f"{r.model[:40]:40s} {r.latency_sec:10.3f} {r.input_tokens:6d} {r.output_tokens:6d} {r.total_tokens:7d} {r.cost_usd:8.4f}")
+        print(
+            f"{r.model[:40]:40s} {r.latency_sec:10.3f} {r.input_tokens:6d} {r.output_tokens:6d} {r.total_tokens:7d} {r.cost_usd:8.4f}")
         if r.error:
             print(f"   ERROR: {r.error}")
+
 
 def compare_tokenizers(models: List[str], tcache: Dict[str, PreTrainedTokenizerFast], sample: str = "Привет, мир!"):
     """
@@ -418,3 +421,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Qwen/Qwen2.5-7B-Instruct демонстрирует гораздо более зрелое владение инструкцией, контекстом и языком.
+# Llama-3.2-1B-Instruct в этом сравнении показала признаки деградации вывода и плохой обработки русского языка.
