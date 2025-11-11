@@ -422,6 +422,9 @@ def main():
 if __name__ == "__main__":
     main()
 
+# Модели:
+# https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main
+# https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/tree/main
 
-# Qwen/Qwen2.5-7B-Instruct демонстрирует гораздо более зрелое владение инструкцией, контекстом и языком.
 # Llama-3.2-1B-Instruct в этом сравнении показала признаки деградации вывода и плохой обработки русского языка.
+# Qwen/Qwen2.5-7B-Instruct демонстрирует гораздо более зрелое владение инструкцией, контекстом и языком.
