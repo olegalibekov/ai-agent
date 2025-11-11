@@ -13,18 +13,17 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, login, whoami
 
 # ========= ENV =========
 load_dotenv()
-from huggingface_hub import login, whoami
-import os
 
 HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-login(token=HF_TOKEN, add_to_git_credential=True)  # сохранит в git-credentials, удобно для git-lfs
-print(whoami())  # быстрая проверка, что токен рабочий
-
 assert HF_TOKEN, "Add HUGGINGFACEHUB_API_TOKEN=hf_*** to your .env"
+
+# логин в HF (сохранит токен в git-credentials, удобно для lfs)
+login(token=HF_TOKEN, add_to_git_credential=True)
+print("HF whoami:", whoami())
 
 # ========= MODELS =========
 # По запросу: сравниваем именно эти две модели
@@ -49,7 +48,6 @@ GEN_PARAMS = {
 }
 
 # ========= PRICING (optional) =========
-# значения — $ за 1k токенов (пример; подставь реальные тарифы твоего провайдера)
 COSTS_PER_1K = {
     # "meta-llama/Llama-3.2-1B-Instruct": {"input": 0.2, "output": 0.6},
     # "Qwen/Qwen2.5-7B-Instruct": {"input": 0.15, "output": 0.45},
@@ -66,8 +64,6 @@ HEADERS_JSON = {
 }
 
 # ========= TOKENIZER FILE MAP (для ручной подгрузки) =========
-# Qwen обычно доступен без проблем; для Llama — gated, поэтому пробуем скачать,
-# иначе переключаемся на GPT-2 токенизатор.
 TOKENIZER_FILES: Dict[str, List[str]] = {
     "meta-llama/Llama-3.2-1B-Instruct": [
         "tokenizer.json",
@@ -77,10 +73,9 @@ TOKENIZER_FILES: Dict[str, List[str]] = {
     "Qwen/Qwen2.5-7B-Instruct": [
         "tokenizer.json",
         "tokenizer_config.json",
-        # у некоторых вариантов есть merges/vocab, но fast-версия из tokenizer.json покрывает кейс
+        # merges/vocab обычно не нужны, fast-версия берётся из tokenizer.json
     ],
 }
-
 
 # ========= DATA CLASSES =========
 @dataclass
@@ -120,6 +115,33 @@ def try_download_tokenizer_dir(model: str) -> Optional[Path]:
         return None
 
 
+def _print_tok_info(model: str, tok: PreTrainedTokenizerFast, source: str):
+    try:
+        print(
+            f"🔤 [{model}] tokenizer={tok.__class__.__name__} | "
+            f"source={source} | vocab={getattr(tok, 'vocab_size', 'n/a')} | "
+            f"max_ctx={getattr(tok, 'model_max_length', 'n/a')}"
+        )
+    except Exception:
+        pass
+
+
+def debug_tokenizer_sample(model: str, tok: PreTrainedTokenizerFast, sample: str = "Привет, мир!"):
+    """
+    Печатает подробности токенайзера и его кодировку строки `sample`.
+    """
+    try:
+        ids = tok.encode(sample, add_special_tokens=False)
+    except Exception:
+        ids = []
+    try:
+        print(ids)
+        print("🔤 Класс токенайзера:", tok.__class__.__name__)
+        print("🔢 Размер словаря:", getattr(tok, "vocab_size", "n/a"))
+    except Exception:
+        pass
+
+
 def get_tokenizer(model: str) -> PreTrainedTokenizerFast:
     """
     Возвращает корректный токенайзер:
@@ -151,17 +173,6 @@ def get_tokenizer(model: str) -> PreTrainedTokenizerFast:
     return tok
 
 
-def _print_tok_info(model: str, tok: PreTrainedTokenizerFast, source: str):
-    try:
-        print(
-            f"🔤 [{model}] tokenizer={tok.__class__.__name__} | "
-            f"source={source} | vocab={getattr(tok, 'vocab_size', '?')} | "
-            f"max_ctx={getattr(tok, 'model_max_length', '?')}"
-        )
-    except Exception:
-        pass
-
-
 def num_tokens(model: str, text: str, cache: Dict[str, PreTrainedTokenizerFast]) -> int:
     """
     Счёт токенов строго тем токенайзером, который мы решили использовать для этой модели.
@@ -169,7 +180,6 @@ def num_tokens(model: str, text: str, cache: Dict[str, PreTrainedTokenizerFast])
     if model not in cache:
         cache[model] = get_tokenizer(model)
     tok = cache[model]
-
     try:
         return len(tok.encode(text, add_special_tokens=False))
     except Exception:
@@ -210,8 +220,7 @@ def _router_model_inference(model: str, prompt: str) -> Dict[str, Any]:
     if resp.status_code == 200 and data is not None:
         return {"ok": True, "data": data}
     if data is None:
-        return {"ok": False, "error": f"Non-JSON response (classic). HTTP {resp.status_code}",
-                "status": resp.status_code, "raw": resp.text[:400]}
+        return {"ok": False, "error": f"Non-JSON response (classic). HTTP {resp.status_code}", "status": resp.status_code, "raw": resp.text[:400]}
     return {"ok": False, "error": f"HTTP {resp.status_code} (classic): {data}", "status": resp.status_code, "raw": data}
 
 
@@ -238,8 +247,7 @@ def _router_chat_completions(model: str, prompt: str) -> Dict[str, Any]:
     if resp.status_code == 200 and data is not None:
         return {"ok": True, "data": data}
     if data is None:
-        return {"ok": False, "error": f"Non-JSON response (chat). HTTP {resp.status_code}", "status": resp.status_code,
-                "raw": resp.text[:400]}
+        return {"ok": False, "error": f"Non-JSON response (chat). HTTP {resp.status_code}", "status": resp.status_code, "raw": resp.text[:400]}
     return {"ok": False, "error": f"HTTP {resp.status_code} (chat): {data}", "status": resp.status_code, "raw": data}
 
 
@@ -360,18 +368,34 @@ def pretty_print(results: List[RunResult]):
     print(header)
     print("-" * len(header))
     for r in results:
-        print(
-            f"{r.model[:40]:40s} {r.latency_sec:10.3f} {r.input_tokens:6d} {r.output_tokens:6d} {r.total_tokens:7d} {r.cost_usd:8.4f}")
+        print(f"{r.model[:40]:40s} {r.latency_sec:10.3f} {r.input_tokens:6d} {r.output_tokens:6d} {r.total_tokens:7d} {r.cost_usd:8.4f}")
         if r.error:
             print(f"   ERROR: {r.error}")
-    print("\n▼ Краткий вывод по качеству (оценка вручную):\n"
-          "   - Смотри точность, структуру, соответствие инструкции, примеры, отсутствие галлюцинаций.\n")
+
+def compare_tokenizers(models: List[str], tcache: Dict[str, PreTrainedTokenizerFast], sample: str = "Привет, мир!"):
+    """
+    Секция сравнения токенайзеров: печатаем техническую инфу и энкодинг sample для каждой модели.
+    """
+    print("\n=== Tokenizer check on sample:", repr(sample), "===\n")
+    for m in models:
+        if m not in tcache:
+            tcache[m] = get_tokenizer(m)
+        tok = tcache[m]
+        # краткая тех. строка
+        _print_tok_info(m, tok, source=getattr(tok, "name_or_path", "auto"))
+        # подробный отладочный вывод (по твоему примеру)
+        debug_tokenizer_sample(m, tok, sample)
+        print("-" * 60)
 
 
 def main():
     tcache: Dict[str, PreTrainedTokenizerFast] = {}
-    results: List[RunResult] = []
 
+    # 1) Сравнение токенайзеров на "Привет, мир!"
+    compare_tokenizers(MODELS, tcache, sample="Привет, мир!")
+
+    # 2) Прогон инференса и метрик
+    results: List[RunResult] = []
     for m in MODELS:
         print(f"==> Running: {m}")
         res = run_once(m, PROMPT, tcache)
