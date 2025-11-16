@@ -2,310 +2,216 @@
 # -*- coding: utf-8 -*-
 
 import os
-from dataclasses import dataclass, field
-from typing import List, Dict, Any
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, UTC
+from typing import List, Literal
 
-from dotenv import load_dotenv
 from openai import OpenAI
-
-# ===================== МОДЕЛИ =====================
-MODEL_MAIN = "gpt-5"          # если нет доступа → "gpt-4.1"
-MODEL_SUMMARY = "gpt-5-mini"  # если нет доступа → "gpt-4.1-mini"
-MODEL_JUDGE = "gpt-5-mini"    # «судья» для сравнения
-
-# ===================== INIT =====================
+from dotenv import load_dotenv
 
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise RuntimeError("OPENAI_API_KEY not found")
 
-print(f"[INIT] API OK: {api_key[:7]}***")
+# ==========================
+#  НАСТРОЙКИ
+# ==========================
 
-client = OpenAI()
+DB_PATH = "memory.db"
+SESSION_ID = "default_session"
 
-# ===================== БАЗОВАЯ СЕССИЯ =====================
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
-@dataclass
-class BaseChatSession:
-    model: str = MODEL_MAIN
-    system_prompt: str = "Ты полезный ассистент."
-    messages: List[Dict[str, Any]] = field(default_factory=list)
-    total_prompt_tokens: int = 0
-    total_completion_tokens: int = 0
-
-    def __post_init__(self):
-        self.messages.append({"role": "system", "content": self.system_prompt})
-
-    def _register_usage(self, r):
-        """
-        Для Responses API:
-        r.usage.input_tokens  -> prompt
-        r.usage.output_tokens -> completion
-        """
-        if r.usage:
-            self.total_prompt_tokens += r.usage.input_tokens
-            self.total_completion_tokens += r.usage.output_tokens
-
-    def _chat_raw(self) -> str:
-        r = client.responses.create(
-            model=self.model,
-            input=self.messages,
-        )
-        self._register_usage(r)
-        return r.output_text
-
-    def chat(self, user_msg: str) -> str:
-        """Обычный шаг диалога."""
-        self.messages.append({"role": "user", "content": user_msg})
-        ans = self._chat_raw()
-        self.messages.append({"role": "assistant", "content": ans})
-        return ans
+Role = Literal["user", "assistant", "system"]
 
 
 @dataclass
-class SimpleChatSession(BaseChatSession):
-    """Сессия без сжатия истории."""
-    pass
+class Message:
+    id: int
+    session_id: str
+    role: Role
+    content: str
+    is_active: bool
+    created_at: str
 
 
-# ===================== СЕССИЯ СО СЖАТИЕМ =====================
+# ==========================
+#  РАБОТА С БД
+# ==========================
 
-@dataclass
-class CompressedChatSession(BaseChatSession):
-    """
-    Сессия с периодическим сжатием истории:
-    - каждые compact_every_n_turns ответов ассистента
-      сжимаем середину в одно system-сообщение "Summary: ...".
-    """
+def get_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-    summary_model: str = MODEL_SUMMARY
-    compact_every_n_turns: int = 4
-    keep_last_messages: int = 4
-    turns_count: int = 0
 
-    def chat(self, user_msg: str) -> str:
-        self.messages.append({"role": "user", "content": user_msg})
-
-        r = client.responses.create(
-            model=self.model,
-            input=self.messages,
-        )
-        self._register_usage(r)
-
-        ans = r.output_text
-        self.messages.append({"role": "assistant", "content": ans})
-        self.turns_count += 1
-
-        # периодически сжимаем историю
-        if self.turns_count % self.compact_every_n_turns == 0:
-            print("[COMPRESS] Running compression…")
-            self._compact()
-
-        return ans
-
-    def _compact(self):
+def init_db():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
         """
-        Простая стратегия:
-        - prefix: только первое system-сообщение
-        - middle: всё между prefix и хвостом (keep_last_messages)
-        - tail: последние keep_last_messages сообщений
-        - middle -> summary (через модель summary_model)
-        - messages = prefix + [summary] + tail
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
         """
-        if len(self.messages) <= self.keep_last_messages + 1:
-            return
+    )
+    conn.commit()
+    conn.close()
 
-        prefix = [self.messages[0]]  # system
-        middle = self.messages[1:-self.keep_last_messages]
-        tail = self.messages[-self.keep_last_messages:]
 
-        if len(middle) < 2:
-            return
+def save_message(session_id: str, role: Role, content: str) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO messages (session_id, role, content, is_active, created_at)
+        VALUES (?, ?, ?, 1, ?)
+        """,
+        (
+            session_id,
+            role,
+            content,
+            datetime.now(UTC).isoformat(),
+        ),
+    )
+    conn.commit()
+    message_id = cur.lastrowid
+    conn.close()
+    return message_id
 
-        summary = self._summarize(middle)
-        summary_msg = {"role": "system", "content": "Summary:\n" + summary}
-        self.messages = prefix + [summary_msg] + tail
 
-    def _summarize(self, msgs: List[Dict[str, Any]]) -> str:
-        text = "\n".join([f"{m['role']}: {m['content']}" for m in msgs])
-
-        r = client.responses.create(
-            model=self.summary_model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Сделай сжатое, фактическое резюме диалога. "
-                        "Не добавляй новую информацию, только перескажи суть."
-                    ),
-                },
-                {"role": "user", "content": text},
-            ],
+def fetch_active_messages(session_id: str) -> List[Message]:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT * FROM messages
+        WHERE session_id = ? AND is_active = 1
+        ORDER BY id ASC
+        """,
+        (session_id,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return [
+        Message(
+            id=row["id"],
+            session_id=row["session_id"],
+            role=row["role"],
+            content=row["content"],
+            is_active=bool(row["is_active"]),
+            created_at=row["created_at"],
         )
-        self._register_usage(r)
-        return r.output_text
+        for row in rows
+    ]
 
 
-# ===================== УТИЛИТЫ =====================
+# ==========================
+#  ВЫЗОВ LLM ЧЕРЕЗ RESPONSES API
+# ==========================
 
-def run_script(session: BaseChatSession, script: List[str]) -> List[str]:
-    answers = []
-    for i, msg in enumerate(script, 1):
-        print(f"\n=== {session.__class__.__name__} | USER {i} ===")
-        print(msg)
-        ans = session.chat(msg)
-        print(f"--- BOT {i} ---")
-        print(ans)
-        answers.append(ans)
-    return answers
+def _format_dialog_as_text(messages: List[Message]) -> str:
+    """Сконвертировать историю в один текстовый промпт."""
+    lines: List[str] = []
 
+    # общий system-контекст
+    lines.append(
+        "Система: Ты русскоязычный ассистент. Отвечай по-русски, дружелюбно и по делу."
+    )
 
-def print_stats(label: str, s: BaseChatSession):
-    total = s.total_prompt_tokens + s.total_completion_tokens
-    print(f"\n===== {label} =====")
-    print("Prompt tokens:    ", s.total_prompt_tokens)
-    print("Completion tokens:", s.total_completion_tokens)
-    print("Total tokens:     ", total)
+    for m in messages:
+        if m.role == "user":
+            prefix = "Пользователь"
+        elif m.role == "assistant":
+            prefix = "Ассистент"
+        else:
+            prefix = "Система"
 
+        lines.append(f"{prefix}: {m.content}")
 
-def format_dialog_for_analysis(session: BaseChatSession, label: str) -> str:
-    """
-    Превращаем messages в читаемый текст для судьи:
-    system / user / assistant, по шагам.
-    """
-    lines: List[str] = [f"=== {label} ==="]
-    for i, m in enumerate(session.messages):
-        role = m["role"]
-        content = str(m["content"])
-        lines.append(f"{i:02d} [{role}]: {content}")
+    # попросим модель продолжить как ассистент
+    lines.append("Ассистент:")
+
     return "\n".join(lines)
 
 
-def compare_sessions_with_judge(
-    simple: BaseChatSession,
-    compressed: BaseChatSession,
-    simple_final: str,
-    compressed_final: str,
-) -> str:
+def call_llm(messages: List[Message]) -> str:
     """
-    Дополнительный финальный запрос (meta-prompt), который сравнивает:
-    - как продолжается разговор с полной историей vs summary
-    - качество ответов
-    - использование токенов
+    Вместо messages-формата используем один большой текстовый промпт.
+    Так мы избегаем всех нюансов схемы input для Responses API.
     """
-    simple_dialog = format_dialog_for_analysis(simple, "SIMPLE (без сжатия)")
-    compressed_dialog = format_dialog_for_analysis(compressed, "COMPRESSED (со сжатием)")
+    prompt_text = _format_dialog_as_text(messages)
 
-    simple_total = simple.total_prompt_tokens + simple.total_completion_tokens
-    compressed_total = compressed.total_prompt_tokens + compressed.total_completion_tokens
-
-    judge_prompt = f"""
-У тебя есть два диалога с пользователем, смоделированных двумя агентами:
-
-1) SIMPLE — агент, который всегда видит полную историю без сжатия.
-2) COMPRESSED — агент, который периодически сжимает историю в summary и опирается на это summary.
-
-Ниже даны обе истории в текстовом виде, включая финальный вопрос и финальный ответ каждого агента.
-
------ SIMPLE DIALOG -----
-{simple_dialog}
-
------ COMPRESSED DIALOG -----
-{compressed_dialog}
-
-Статистика токенов:
-- SIMPLE: prompt={simple.total_prompt_tokens}, completion={simple.total_completion_tokens}, total={simple_total}
-- COMPRESSED: prompt={compressed.total_prompt_tokens}, completion={compressed.total_completion_tokens}, total={compressed_total}
-
-Требуется:
-
-1) Кратко сравни, как оба агента продолжают финальный разговор
-   с учётом их «памяти» (полная история vs summary).
-   Отметь, теряет ли compressed-агент важные детали или нет.
-
-2) Оцени качество финальных ответов:
-   - укажи, различаются ли смысл и полнота;
-   - где ответ точнее/яснее/полезнее;
-   - есть ли заметные искажения из-за сжатия.
-
-3) Сопоставь это с использованием токенов:
-   - кто потратил больше токенов и за счёт чего;
-   - есть ли потенциальный выигрыш от компрессии в более длинных диалогах.
-
-Отвечай структурированно, по пунктам 1–3. Пиши кратко, но по делу.
-"""
-
-    r = client.responses.create(
-        model=MODEL_JUDGE,
-        input=[
-            {"role": "system", "content": "Ты аккуратный и строгий аналитик качества диалогов ИИ."},
-            {"role": "user", "content": judge_prompt},
-        ],
-    )
-    return r.output_text
-
-
-# ===================== MAIN =====================
-
-def main():
-    print("== START ==")
-
-    script = [
-        "Привет! Как дела?",
-        "Что умеет этот бот?",
-        "Дай пример простой функции на Python.",
-        "Как работает цикл for?",
-        "Что такое список?",
-        "Приведи пример списка из трёх элементов.",
-        "Что такое словарь?",
-        "Подытожь всё коротко.",
-    ]
-
-    final_query = (
-        "Теперь, опираясь на весь наш предыдущий диалог, "
-        "кратко опиши, чему я учился и что ты мне объяснял."
+    response = client.responses.create(
+        model="gpt-4.1-mini",
+        input=prompt_text,
+        # при желании можно указать max_output_tokens
+        # max_output_tokens=512,
     )
 
-    # 1. Обычная сессия
-    simple = SimpleChatSession(
-        model=MODEL_MAIN,
-        system_prompt="Ты помогаешь новичку разбираться в Python и объясняешь просто.",
-    )
+    # в новом SDK есть удобный shortcut
+    return response.output_text.strip()
 
-    # 2. Сжатая сессия
-    compressed = CompressedChatSession(
-        model=MODEL_MAIN,
-        summary_model=MODEL_SUMMARY,
-        compact_every_n_turns=4,    # для демо — часто
-        keep_last_messages=4,
-        system_prompt="Ты помогаешь новичку разбираться в Python и объясняешь просто.",
-    )
 
-    print("\n*** SIMPLE SESSION ***")
-    _ = run_script(simple, script)
+# ==========================
+#  ПЕЧАТЬ ИСТОРИИ
+# ==========================
 
-    print("\n*** COMPRESSED SESSION ***")
-    _ = run_script(compressed, script)
+def print_full_history(session_id: str):
+    messages = fetch_active_messages(session_id)
 
-    # Финальный вопрос к обеим сессиям
-    print("\n=== FINAL QUESTION (SIMPLE) ===")
-    simple_final = simple.chat(final_query)
-    print(simple_final)
+    print("\n================= ИСТОРИЯ ДИАЛОГА =================")
+    if not messages:
+        print("(история пуста)")
+        print("===================================================\n")
+        return
 
-    print("\n=== FINAL QUESTION (COMPRESSED) ===")
-    compressed_final = compressed.chat(final_query)
-    print(compressed_final)
+    for m in messages:
+        date = m.created_at.split("T")[0] if "T" in m.created_at else m.created_at
+        print(f"[{date}] {m.role.upper()}: {m.content}")
 
-    # Статы
-    print_stats("Без сжатия (Simple)", simple)
-    print_stats("Со сжатием (Compressed)", compressed)
+    print("===================================================\n")
 
-    # Финальное сравнение судьёй
-    print("\n===== JUDGE ANALYSIS (Simple vs Compressed) =====")
-    judge_result = compare_sessions_with_judge(simple, compressed, simple_final, compressed_final)
-    print(judge_result)
+
+# ==========================
+#  ЧАТ-ЦИКЛ
+# ==========================
+
+def chat():
+    init_db()
+    print("Агент с долговременной памятью (SQLite + Responses API).")
+    print("Введите сообщение. Для выхода — exit/quit.\n")
+
+    # печатаем всю историю при запуске
+    print_full_history(SESSION_ID)
+
+    while True:
+        user_input = input("Сообщение: ").strip()
+        if user_input.lower() in ("exit", "quit"):
+            print("Выход")
+            break
+
+        # сохраняем сообщение пользователя
+        save_message(SESSION_ID, "user", user_input)
+
+        # берём всю историю
+        full_history = fetch_active_messages(SESSION_ID)
+
+        # вызываем модель
+        assistant_reply = call_llm(full_history)
+
+        # сохраняем ответ ассистента
+        save_message(SESSION_ID, "assistant", assistant_reply)
+
+        # выводим в консоль
+        print(f"Бот: {assistant_reply}\n")
 
 
 if __name__ == "__main__":
-    main()
+    chat()
