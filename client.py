@@ -48,7 +48,6 @@ class TodoAgent:
         print(f"\n👉 Вызываем MCP tool: {tool_name}({args})")
         result = await self._session.call_tool(tool_name, args)
 
-        # result.content — это список блоков контента; для простоты вытащим текст первого
         if result.content and result.content[0].type == "text":
             return result.content[0].text
 
@@ -61,10 +60,8 @@ class TodoAgent:
 async def main():
     agent = TodoAgent()
 
-    # 1. Подключаемся к MCP-серверу
     await agent.connect("todo_mcp_server.py")
 
-    # 2. Спрашиваем у пользователя ID и вызываем инструмент
     try:
         while True:
             raw = input("\nВведите user_id (1–10) или 'q' для выхода: ").strip()
