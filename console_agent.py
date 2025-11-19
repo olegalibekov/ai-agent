@@ -1,5 +1,6 @@
 # console_agent.py
 import asyncio
+import json
 import os
 import sys
 from contextlib import AsyncExitStack
@@ -12,7 +13,6 @@ from openai import OpenAI
 
 # Модель можно заменить на другую быструю
 MODEL_NAME = "gpt-4.1-mini"
-
 
 # ---------- Инициализация OpenAI ----------
 load_dotenv()
@@ -65,6 +65,8 @@ class ConsoleReminderAgent:
         assert self.session is not None
         await self.session.call_tool("add_message", {"text": text})
 
+    import json
+
     async def fetch_messages_text(self) -> str:
         """
         Вызывает MCP-tool get_messages и превращает результат в plain-text,
@@ -73,32 +75,44 @@ class ConsoleReminderAgent:
         assert self.session is not None
         result = await self.session.call_tool("get_messages", {})
 
-        # result.content — список элементов типа text/json/etc.
-        # fastmcp при возврате dict делает JSON-контент.
-        messages = []
-        try:
-            json_payload = None
-            for item in result.content:
-                if getattr(item, "type", None) == "json":
-                    json_payload = item.data
-            if json_payload is None:
-                return "(не удалось разобрать результат MCP)"
+        # 1. Пытаемся взять распарсенный JSON из structuredContent
+        payload = None
+        if result.structuredContent and isinstance(result.structuredContent, dict):
+            # fastmcp кладёт dict под ключом "result"
+            payload = result.structuredContent.get("result")
 
-            raw_msgs = json_payload.get("messages", [])
-            for m in raw_msgs[-50:]:  # последние 50 сообщений достаточно
-                time = m.get("time", "?")
-                text = m.get("text", "")
-                messages.append(f"{time}: {text}")
-        except Exception as e:
-            return f"(ошибка парсинга результата MCP: {e})"
+        # 2. Если structuredContent по какой-то причине нет — пробуем распарсить text
+        if payload is None:
+            if result.content and hasattr(result.content[0], "text"):
+                try:
+                    payload = json.loads(result.content[0].text)
+                except Exception:
+                    payload = None
+
+        if not payload:
+            return "(сообщений пока нет)"
+
+        raw_msgs = payload.get("messages", [])
+        messages: list[str] = []
+
+        # Берём последние 50 сообщений
+        for m in raw_msgs[-50:]:
+            time = m.get("time", "?")
+            text = m.get("text", "")
+            messages.append(f"{time}: {text}")
 
         if not messages:
             return "(сообщений пока нет)"
 
+        # Для дебага — покажем, что именно пойдёт в LLM
+        print("\n[DEBUG] MESSAGES FOR LLM:")
+        for line in messages:
+            print("  ", line)
+
         return "\n".join(messages)
 
     # ---------- Цикл суммаризации ----------
-    async def summary_loop(self, interval_sec: int = 5):
+    async def summary_loop(self, interval_sec: int = 10):
         """
         Каждые interval_sec секунд:
         - берём сообщения через MCP
@@ -179,7 +193,7 @@ class ConsoleReminderAgent:
         await self.start()
 
         # параллельный таск суммаризации
-        summary_task = asyncio.create_task(self.summary_loop(interval_sec=30))
+        summary_task = asyncio.create_task(self.summary_loop())
 
         try:
             await self.input_loop()

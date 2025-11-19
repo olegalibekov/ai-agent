@@ -11,11 +11,19 @@ mcp = FastMCP("console-reminder")
 
 
 def _load_messages() -> Dict[str, List[Dict[str, str]]]:
-    """Читаем messages.json (если нет — возвращаем пустой список)."""
+    """Читаем messages.json (если нет или он пустой/битый — возвращаем пустой список)."""
     if not MESSAGES_FILE.exists():
         return {"messages": []}
-    with MESSAGES_FILE.open("r", encoding="utf-8") as f:
-        return json.load(f)
+
+    try:
+        text = MESSAGES_FILE.read_text(encoding="utf-8").strip()
+        if not text:
+            # пустой файл
+            return {"messages": []}
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # файл есть, но там невалидный JSON — не падаем, а начинаем "с чистого листа"
+        return {"messages": []}
 
 
 def _save_messages(data: Dict[str, List[Dict[str, str]]]) -> None:
