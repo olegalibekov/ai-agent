@@ -104,7 +104,6 @@ class ConsoleReminderAgent:
         if not messages:
             return "(сообщений пока нет)"
 
-        # Для дебага — покажем, что именно пойдёт в LLM
         print("\n[DEBUG] MESSAGES FOR LLM:")
         for line in messages:
             print("  ", line)
