@@ -1,5 +1,3 @@
-# agent_pipeline.py
-
 import os
 import json
 import asyncio
@@ -134,6 +132,6 @@ async def run_agent(user_query: str) -> None:
 if __name__ == "__main__":
     asyncio.run(
         run_agent(
-            "Найди документы про Flutter, сделай суммаризацию и сохрани в файл result.txt"
+            "Найди документы про ML, сделай суммаризацию и сохрани в файл result.txt"
         )
     )
