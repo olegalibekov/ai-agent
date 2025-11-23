@@ -1,7 +1,7 @@
 import json
 from typing import Any, Dict, List, Tuple
 
-from mcp import types as mcp_types  # только для type hints
+from mcp import types as mcp_types
 from mcp import ClientSession
 
 from mcp_multi_client import MCPMultiClient
@@ -17,7 +17,6 @@ class ToolsRegistry:
         self._mcp_client = mcp_client
         self.tools_for_llm: List[Dict[str, Any]] = []
         self._routes: Dict[str, Tuple[ClientSession, str]] = {}
-
 
     async def discover(self) -> None:
         """

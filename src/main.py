@@ -1,5 +1,3 @@
-# /Users/fehty/PycharmProjects/ai-agent/src/main.py
-
 import asyncio
 import os
 import sys

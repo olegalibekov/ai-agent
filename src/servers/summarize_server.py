@@ -1,5 +1,3 @@
-# src/servers/summarize_server.py
-
 import os
 import re
 
@@ -7,7 +5,6 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from openai import OpenAI
 
-# Подтягиваем переменные из .env (в т.ч. OPENAI_API_KEY)
 load_dotenv()
 
 mcp = FastMCP("summarize-server", json_response=True)
