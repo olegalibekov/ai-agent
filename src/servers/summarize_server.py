@@ -3,15 +3,16 @@
 import os
 import re
 
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from openai import OpenAI
-from dotenv import load_dotenv  # <-- добавили
 
-# грузим .env относительно текущей рабочей директории/проекта
+# Подтягиваем переменные из .env (в т.ч. OPENAI_API_KEY)
 load_dotenv()
 
 mcp = FastMCP("summarize-server", json_response=True)
 
+# Клиент OpenAI: ключ берём из окружения
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
@@ -25,37 +26,19 @@ def summarize_text(text: str) -> str:
     if not text:
         return ""
 
+    # Делать сложную структуру input не нужно — используем instructions + input
     response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": (
-                            "Ты делаешь краткое резюме текста.\n"
-                            "Всегда отвечай строго одним законченным предложением на русском языке, "
-                            "не больше и не меньше одного предложения."
-                        ),
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": f"Суммаризируй этот текст в одно предложение:\n\n{text}",
-                    }
-                ],
-            },
-        ],
+        model="gpt-4.1-mini",  # или твоя модель
+        instructions=(
+            "Ты делаешь краткое резюме текста.\n"
+            "Всегда отвечай строго одним законченным предложением на русском языке, "
+            "не больше и не меньше одного предложения."
+        ),
+        input=f"Суммаризируй этот текст в одно предложение:\n\n{text}",
     )
 
     summary = (response.output_text or "").strip()
 
-    # Жёстко обрежем по первому .?!, чтобы точно одно предложение
     m = re.search(r"[.!?]", summary)
     if not m:
         return summary
