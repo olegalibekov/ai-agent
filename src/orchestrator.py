@@ -68,7 +68,6 @@ class Orchestrator:
 
                 tool_result = await self._registry.call_tool(tool_name, args)
 
-                # 👉 Если это summarize_text — сразу возвращаем ровно то, что вернул тул
                 if tool_name.endswith("___summarize_text"):
                     return tool_result
 
