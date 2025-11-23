@@ -40,10 +40,6 @@ async def main() -> None:
                 name="summarize",
                 command=[sys.executable, str(SERVERS_DIR / "summarize_server.py")],
             ),
-            MCPServerConfig(
-                name="reminder",
-                command=[sys.executable, str(SERVERS_DIR / "reminder_server.py")],
-            ),
         ]
     )
 
