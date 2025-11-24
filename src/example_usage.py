@@ -21,19 +21,30 @@ def example_build_index():
 
 
 def example_search():
-    """Пример поиска"""
-    # Загрузка индекса
+    """Пример поиска по реальным документам"""
     rag = OllamaRAG()
     rag.load('my_index')
 
-    # Поиск
-    results = rag.search('как работает RAG?', top_k=3)
+    # Запросы по содержимому документов
+    queries = [
+        'что такое RAG?'
+    ]
 
-    # Вывод результатов
-    for i, result in enumerate(results, 1):
-        print(f"\n{i}. {result['metadata']['source']}")
-        print(f"   Score: {result['score']:.4f}")
-        print(f"   {result['text'][:200]}...")
+    for query in queries:
+        print(f"\n{'=' * 80}")
+        print(f"Запрос: {query}")
+        print('=' * 80)
+
+        results = rag.search(query, top_k=2)
+
+        for i, result in enumerate(results, 1):
+            print(f"\n{i}. Источник: {result['metadata']['source']}")
+            print(f"   Релевантность: {result['score']:.4f}")
+            print(f"   Текст: {result['text'][:250]}...")
+
+
+if __name__ == '__main__':
+    example_search()
 
 
 def example_manual_documents():
