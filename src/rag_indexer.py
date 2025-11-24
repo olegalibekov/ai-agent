@@ -21,18 +21,41 @@ class OllamaRAG:
 
     def get_embedding(self, text: str) -> np.ndarray:
         """Получение эмбеддинга через Ollama"""
-        response = requests.post(
-            f'{self.ollama_url}/api/embeddings',
-            json={
-                'model': self.embedding_model,
-                'prompt': text
-            }
-        )
-        return np.array(response.json()['embedding'])
+        try:
+            response = requests.post(
+                f'{self.ollama_url}/api/embeddings',  # 👈 вместо /api/embeddings
+                json={
+                    'model': self.embedding_model,
+                    'input': text,  # 👈 вместо prompt
+                },
+                timeout=60,
+            )
+
+            if response.status_code != 200:
+                print(f"❌ Ollama вернула ошибку {response.status_code}")
+                print("Ответ сервера:")
+                print(response.text)
+                response.raise_for_status()
+
+            data = response.json()
+
+            if 'embedding' not in data:
+                print("❌ Ошибка: в ответе нет поля 'embedding'")
+                print("Полный ответ:", data)
+                raise KeyError("'embedding' not found in response")
+
+            return np.array(data['embedding'], dtype=np.float32)
+
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Ошибка подключения к Ollama: {e}")
+            print("Убедитесь, что Ollama запущен: `ollama serve`")
+            raise
+        except KeyError:
+            print(f"❌ Модель {self.embedding_model} не поддерживает embeddings или ответ другого формата.")
+            raise
 
     def chunk_text(self, text: str, chunk_size=1000, overlap=100) -> List[str]:
         """Разбивка текста на чанки с перекрытием (500-1000 токенов)"""
-        # Простой подсчёт токенов (примерно 4 символа = 3.txt токен)
         char_per_token = 4
         chunk_chars = chunk_size * char_per_token
         overlap_chars = overlap * char_per_token
@@ -42,17 +65,14 @@ class OllamaRAG:
 
         while start < len(text):
             end = start + chunk_chars
-
-            # Пытаемся разбить по параграфам или предложениям
             chunk = text[start:end]
 
-            # Если не конец текста, ищем ближайший конец предложения
             if end < len(text):
                 last_period = chunk.rfind('.')
                 last_newline = chunk.rfind('\n')
                 split_point = max(last_period, last_newline)
 
-                if split_point > len(chunk) * 0.5:  # Не слишком короткий чанк
+                if split_point > len(chunk) * 0.5:
                     chunk = chunk[:split_point + 1]
                     end = start + split_point + 1
 
@@ -75,11 +95,9 @@ class OllamaRAG:
             print(f"  Создано {len(chunks)} чанков")
 
             for i, chunk in enumerate(chunks):
-                # Генерация эмбеддинга
                 embedding = self.get_embedding(chunk)
                 all_embeddings.append(embedding)
 
-                # Сохранение чанка и метаданных
                 self.chunks.append(chunk)
                 self.metadata.append({
                     'source': doc['source'],
@@ -90,15 +108,12 @@ class OllamaRAG:
                 if (i + 1) % 10 == 0:
                     print(f"  Обработано {i + 1}/{len(chunks)} чанков")
 
-        # Создание FAISS индекса
         embeddings_array = np.array(all_embeddings).astype('float32')
-
-        # Нормализация векторов к [0, 3.txt]
         norms = np.linalg.norm(embeddings_array, axis=1, keepdims=True)
         embeddings_array = embeddings_array / norms
 
         dimension = embeddings_array.shape[1]
-        self.index = faiss.IndexFlatIP(dimension)  # Inner Product для нормализованных векторов
+        self.index = faiss.IndexFlatIP(dimension)
         self.index.add(embeddings_array)
 
         print(f"\n✓ Индекс создан: {len(self.chunks)} чанков, размерность {dimension}")
@@ -129,11 +144,8 @@ class OllamaRAG:
     def save(self, path='rag_index'):
         """Сохранение индекса в базу данных"""
         Path(path).mkdir(exist_ok=True)
-
-        # Сохранение FAISS индекса
         faiss.write_index(self.index, f'{path}/vectors.faiss')
 
-        # Сохранение чанков и метаданных
         with open(f'{path}/data.pkl', 'wb') as f:
             pickle.dump({
                 'chunks': self.chunks,
@@ -167,7 +179,6 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
         print(f"⚠ Папка {folder_path} не найдена")
         return documents
 
-    # Markdown и текстовые файлы
     for ext in ['*.md', '*.txt']:
         for file_path in folder.glob(ext):
             print(f"Загрузка {file_path.name}...")
@@ -177,7 +188,6 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
                     'source': file_path.name
                 })
 
-    # Python файлы (код)
     for file_path in folder.glob('*.py'):
         print(f"Загрузка {file_path.name}...")
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -186,7 +196,6 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
                 'source': file_path.name
             })
 
-    # PDF файлы
     try:
         import pdfplumber
         for file_path in folder.glob('*.pdf'):
@@ -198,8 +207,7 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
                     'source': file_path.name
                 })
     except ImportError:
-        print("⚠ pdfplumber не установлен, PDF файлы пропущены")
-        print("  Установите: pip install pdfplumber")
+        pass
 
     print(f"\n✓ Загружено {len(documents)} документов")
     return documents
@@ -211,34 +219,34 @@ def main():
     print("RAG Индексация документов")
     print("=" * 80)
 
-    # Создание RAG системы
     rag = OllamaRAG()
 
-    # Загрузка документов из папки
     docs_folder = input("\nПуть к папке с документами (по умолчанию './documents'): ").strip()
     if not docs_folder:
-        docs_folder = './documents'
+        docs_folder = '/Users/fehty/PycharmProjects/ai-agent/documents/'
 
     documents = load_documents_from_folder(docs_folder)
 
     if not documents:
-        print("\n❌ Документы не найдены. Создайте папку './documents' и добавьте туда файлы.")
+        print("\n❌ Документы не найдены.")
         return
 
-    # Индексация документов
     print("\n" + "=" * 80)
     print("Начало индексации...")
     print("=" * 80)
-    rag.add_documents(documents)
 
-    # Сохранение индекса
+    try:
+        rag.add_documents(documents)
+    except Exception as e:
+        print(f"\n❌ Ошибка при индексации: {e}")
+        return
+
     index_path = input("\nПуть для сохранения индекса (по умолчанию 'rag_index'): ").strip()
     if not index_path:
         index_path = 'rag_index'
 
     rag.save(index_path)
 
-    # Демо поиска
     print("\n" + "=" * 80)
     print("Тестовый поиск")
     print("=" * 80)
