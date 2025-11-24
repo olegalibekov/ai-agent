@@ -1,5 +1,5 @@
 # rag_indexer.py
-
+import ollama
 import requests
 import numpy as np
 import faiss
@@ -12,21 +12,36 @@ from pathlib import Path
 class OllamaRAG:
     def __init__(self,
                  embedding_model='nomic-embed-text',
-                 ollama_url='http://localhost:11434'):
+                 ollama_url='http://localhost:11434',
+                 auto_fallback=True):
         self.embedding_model = embedding_model
         self.ollama_url = ollama_url
+        self.auto_fallback = auto_fallback
         self.index = None
         self.chunks = []
         self.metadata = []
 
+        # Альтернативные модели для embeddings (в порядке приоритета)
+        self.fallback_models = [
+            'nomic-embed-text',
+            # 'mxbai-embed-large',
+            # 'all-minilm',
+        ]
+
+
     def get_embedding(self, text: str) -> np.ndarray:
-        """Получение эмбеддинга через Ollama"""
+        """Получение эмбеддинга через стабильный /api/embeddings"""
         try:
+            # response = ollama.embed(
+            #     model=self.embedding_model,
+            #     input='text',
+            # )
+
             response = requests.post(
-                f'{self.ollama_url}/api/embeddings',  # 👈 вместо /api/embeddings
+                f'{self.ollama_url}/api/embed',
                 json={
-                    'model': self.embedding_model,
-                    'input': text,  # 👈 вместо prompt
+                    'model': 'nomic-embed-text',
+                    'input': 'text',
                 },
                 timeout=60,
             )
@@ -39,19 +54,20 @@ class OllamaRAG:
 
             data = response.json()
 
-            if 'embedding' not in data:
-                print("❌ Ошибка: в ответе нет поля 'embedding'")
-                print("Полный ответ:", data)
-                raise KeyError("'embedding' not found in response")
+            if 'embeddings' not in data:
+                print("❌ Ошибка: в ответе нет embeddings")
+                print("Ответ:", data)
+                raise KeyError("embedding not found")
 
-            return np.array(data['embedding'], dtype=np.float32)
+            vec = np.array(data['embeddings'], dtype=np.float32)
 
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Ошибка подключения к Ollama: {e}")
-            print("Убедитесь, что Ollama запущен: `ollama serve`")
-            raise
-        except KeyError:
-            print(f"❌ Модель {self.embedding_model} не поддерживает embeddings или ответ другого формата.")
+            if vec.size == 0:
+                raise ValueError("empty embedding")
+
+            return vec
+
+        except Exception as e:
+            print(f"❌ Ошибка получения эмбеддинга: {e}")
             raise
 
     def chunk_text(self, text: str, chunk_size=1000, overlap=100) -> List[str]:
