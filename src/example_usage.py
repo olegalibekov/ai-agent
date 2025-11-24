@@ -9,7 +9,7 @@ def example_build_index():
     rag = OllamaRAG()
 
     # Загрузка документов
-    documents = load_documents_from_folder('./documents')
+    documents = load_documents_from_folder('/Users/fehty/PycharmProjects/ai-agent/documents/')
 
     # Индексация
     rag.add_documents(documents)
@@ -60,5 +60,5 @@ if __name__ == '__main__':
     # Раскомментируйте нужный пример
 
     # example_build_index()
-    # example_search()
-    example_manual_documents()
+    example_search()
+    # example_manual_documents()
