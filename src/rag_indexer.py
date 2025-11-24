@@ -28,7 +28,6 @@ class OllamaRAG:
             # 'all-minilm',
         ]
 
-
     def get_embedding(self, text: str) -> np.ndarray:
         """Получение эмбеддинга через стабильный /api/embeddings"""
         try:
@@ -41,7 +40,7 @@ class OllamaRAG:
                 f'{self.ollama_url}/api/embed',
                 json={
                     'model': 'nomic-embed-text',
-                    'input': 'text',
+                    'input': text,
                 },
                 timeout=60,
             )
@@ -59,7 +58,7 @@ class OllamaRAG:
                 print("Ответ:", data)
                 raise KeyError("embedding not found")
 
-            vec = np.array(data['embeddings'], dtype=np.float32)
+            vec = np.array(data['embeddings'][0], dtype=np.float32)
 
             if vec.size == 0:
                 raise ValueError("empty embedding")
