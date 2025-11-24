@@ -1,4 +1,6 @@
 # rag_indexer.py
+import time
+
 import ollama
 import requests
 import numpy as np
@@ -28,51 +30,62 @@ class OllamaRAG:
             # 'all-minilm',
         ]
 
-    def get_embedding(self, text: str) -> np.ndarray:
-        """Получение эмбеддинга через стабильный /api/embeddings"""
-        try:
-            # response = ollama.embed(
-            #     model=self.embedding_model,
-            #     input='text',
-            # )
+    def get_embedding(self, text: str, max_retries=1) -> np.ndarray:
+        """Получение эмбеддинга с truncation и retry"""
+        # Ограничиваем размер текста (nomic-embed-text: ~8192 токенов)
+        max_chars = 8000 * 4  # ~8000 токенов * 4 символа на токен
+        if len(text) > max_chars:
+            text = text[:max_chars]
+            print(f"⚠ Текст обрезан до {max_chars} символов")
 
-            response = requests.post(
-                f'{self.ollama_url}/api/embed',
-                json={
-                    'model': 'nomic-embed-text',
-                    'input': text,
-                },
-                timeout=60,
-            )
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    f'{self.ollama_url}/api/embed',
+                    json={
+                        'model': self.embedding_model,
+                        'input': text,
+                        'truncate': True,  # Добавляем truncate
+                    },
+                    timeout=60,
+                )
 
-            if response.status_code != 200:
-                print(f"❌ Ollama вернула ошибку {response.status_code}")
-                print("Ответ сервера:")
-                print(response.text)
-                response.raise_for_status()
+                if response.status_code != 200:
+                    if attempt < max_retries - 1:
+                        print(f"⚠ Попытка {attempt + 1} не удалась, повтор...")
+                        time.sleep(2)
+                        continue
 
-            data = response.json()
+                    print(f"❌ Ollama вернула ошибку {response.status_code}")
+                    print("Ответ:", response.text)
+                    response.raise_for_status()
 
-            if 'embeddings' not in data:
-                print("❌ Ошибка: в ответе нет embeddings")
-                print("Ответ:", data)
-                raise KeyError("embedding not found")
+                data = response.json()
 
-            vec = np.array(data['embeddings'][0], dtype=np.float32)
+                if 'embeddings' not in data:
+                    raise KeyError("embedding not found")
 
-            if vec.size == 0:
-                raise ValueError("empty embedding")
+                vec = np.array(data['embeddings'][0], dtype=np.float32)
 
-            return vec
+                if vec.size == 0:
+                    raise ValueError("empty embedding")
 
-        except Exception as e:
-            print(f"❌ Ошибка получения эмбеддинга: {e}")
-            raise
+                return vec
 
-    def chunk_text(self, text: str, chunk_size=1000, overlap=100) -> List[str]:
-        """Разбивка текста на чанки с перекрытием (500-1000 токенов)"""
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    print(f"⚠ Ошибка сети, попытка {attempt + 1}/{max_retries}...")
+                    time.sleep(2)
+                else:
+                    print(f"❌ Ошибка после {max_retries} попыток: {e}")
+                    raise
+
+        raise RuntimeError("Не удалось получить эмбеддинг")
+
+    def chunk_text(self, text: str, chunk_size=100, overlap=50) -> List[str]:
+        """Разбивка текста на чанки (уменьшенный размер для надёжности)"""
         char_per_token = 4
-        chunk_chars = chunk_size * char_per_token
+        chunk_chars = chunk_size * char_per_token  # 500 токенов = 2000 символов
         overlap_chars = overlap * char_per_token
 
         chunks = []
@@ -106,7 +119,7 @@ class OllamaRAG:
 
         for doc in documents:
             print(f"\nОбработка: {doc['source']}")
-            chunks = self.chunk_text(doc['text'], chunk_size=800, overlap=80)
+            chunks = self.chunk_text(doc['text'])
             print(f"  Создано {len(chunks)} чанков")
 
             for i, chunk in enumerate(chunks):
