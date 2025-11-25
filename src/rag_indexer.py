@@ -1,7 +1,7 @@
 # rag_indexer.py
 import time
 
-import ollama
+import ollama  # можно удалить, если не используешь ollama.* напрямую
 import requests
 import numpy as np
 import faiss
@@ -20,8 +20,8 @@ class OllamaRAG:
         self.ollama_url = ollama_url
         self.auto_fallback = auto_fallback
         self.index = None
-        self.chunks = []
-        self.metadata = []
+        self.chunks: List[str] = []
+        self.metadata: List[Dict] = []
 
         # Альтернативные модели для embeddings (в порядке приоритета)
         self.fallback_models = [
@@ -30,8 +30,10 @@ class OllamaRAG:
             # 'all-minilm',
         ]
 
+    # ========= EMBEDDINGS =========
+
     def get_embedding(self, text: str, max_retries=1) -> np.ndarray:
-        """Получение эмбеддинга с truncation и retry"""
+        """Получение эмбеддинга с truncation и retry через Ollama /api/embed"""
         # Ограничиваем размер текста (nomic-embed-text: ~8192 токенов)
         max_chars = 8000 * 4  # ~8000 токенов * 4 символа на токен
         if len(text) > max_chars:
@@ -45,7 +47,7 @@ class OllamaRAG:
                     json={
                         'model': self.embedding_model,
                         'input': text,
-                        'truncate': True,  # Добавляем truncate
+                        'truncate': True,
                     },
                     timeout=60,
                 )
@@ -63,7 +65,7 @@ class OllamaRAG:
                 data = response.json()
 
                 if 'embeddings' not in data:
-                    raise KeyError("embedding not found")
+                    raise KeyError("embedding not found in response")
 
                 vec = np.array(data['embeddings'][0], dtype=np.float32)
 
@@ -82,19 +84,24 @@ class OllamaRAG:
 
         raise RuntimeError("Не удалось получить эмбеддинг")
 
+    # ========= ЧАНКИРОВАНИЕ =========
+
     def chunk_text(self, text: str, chunk_size=100, overlap=50) -> List[str]:
-        """Разбивка текста на чанки (уменьшенный размер для надёжности)"""
+        """Разбивка текста на чанки (уменьшенный размер для надёжности).
+        chunk_size/overlap: в токенах (примерно), пересчёт в символы.
+        """
         char_per_token = 4
-        chunk_chars = chunk_size * char_per_token  # 500 токенов = 2000 символов
+        chunk_chars = chunk_size * char_per_token
         overlap_chars = overlap * char_per_token
 
-        chunks = []
+        chunks: List[str] = []
         start = 0
 
         while start < len(text):
             end = start + chunk_chars
             chunk = text[start:end]
 
+            # Пытаемся аккуратно обрезать по точке или переводу строки
             if end < len(text):
                 last_period = chunk.rfind('.')
                 last_newline = chunk.rfind('\n')
@@ -110,6 +117,8 @@ class OllamaRAG:
             start = end - overlap_chars
 
         return chunks
+
+    # ========= ПОСТРОЕНИЕ ИНДЕКСА =========
 
     def add_documents(self, documents: List[Dict[str, str]]):
         """Добавление документов в индекс"""
@@ -146,7 +155,9 @@ class OllamaRAG:
 
         print(f"\n✓ Индекс создан: {len(self.chunks)} чанков, размерность {dimension}")
 
-    def search(self, query: str, top_k=5) -> List[Dict]:
+    # ========= ПОИСК =========
+
+    def search(self, query: str, top_k=1) -> List[Dict]:
         """Поиск релевантных чанков"""
         if self.index is None:
             raise ValueError("Индекс не создан. Сначала вызовите add_documents() или load()")
@@ -168,6 +179,145 @@ class OllamaRAG:
             })
 
         return results
+
+    # ========= LLM (CHAT) =========
+
+    def _chat(self, messages, model: str = "llama3") -> str:
+        """
+        Вызов LLM через Ollama /api/chat (без стриминга).
+        messages: список dict-ов вида {'role': 'user'|'system'|'assistant', 'content': '...'}
+        """
+        try:
+            response = requests.post(
+                f"{self.ollama_url}/api/chat",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "stream": False,
+                },
+                timeout=120,
+            )
+
+            if response.status_code != 200:
+                print(f"❌ Ошибка LLM {response.status_code}")
+                print("Ответ:", response.text)
+                response.raise_for_status()
+
+            data = response.json()
+            return data["message"]["content"]
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Ошибка при запросе к LLM: {e}")
+            raise
+
+    # ========= ОТВЕТ С RAG =========
+
+    def answer_with_rag(
+        self,
+        question: str,
+        model: str = "llama3",
+        top_k: int = 1,
+        max_context_chars: int = 8000,
+    ) -> Dict:
+        """
+        Ответ с использованием RAG:
+        - ищем релевантные чанки
+        - добавляем их в контекст
+        - отправляем запрос к LLM
+        Возвращаем dict с ответом и использованными чанками.
+        """
+        # 1. Поиск релевантных чанков
+        results = self.search(question, top_k=top_k)
+
+        # 2. Собираем контекст
+        context_chunks = []
+        total_len = 0
+        for r in results:
+            chunk = r["text"]
+            if total_len + len(chunk) > max_context_chars:
+                break
+            context_chunks.append(chunk)
+            total_len += len(chunk)
+
+        context = "\n\n---\n\n".join(context_chunks)
+
+        # 3. Формируем сообщения для LLM
+        system_prompt = (
+            "Ты умный технический ассистент. "
+            "Отвечай только на основе предоставленного контекста, "
+            "если это возможно. Если в контексте нет ответа, честно скажи об этом."
+        )
+
+        user_content = (
+            f"Вопрос пользователя:\n{question}\n\n"
+            f"Контекст (фрагменты документов):\n{context}\n\n"
+            "Ответь максимально полезно."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+
+        answer = self._chat(messages, model=model)
+
+        return {
+            "answer": answer,
+            "context": context,
+            "chunks": results,
+        }
+
+    # ========= ОТВЕТ БЕЗ RAG =========
+
+    def answer_without_rag(
+        self,
+        question: str,
+        model: str = "llama3",
+    ) -> str:
+        """
+        Базовый ответ модели без какого-либо контекста (без RAG).
+        """
+        system_prompt = (
+            "Ты умный технический ассистент. Отвечай на вопросы пользователя "
+            "на русском языке, используя свои общие знания."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question},
+        ]
+
+        return self._chat(messages, model=model)
+
+    # ========= СРАВНЕНИЕ =========
+
+    def compare_answers(
+        self,
+        question: str,
+        model: str = "llama3",
+        top_k: int = 1,
+    ) -> Dict:
+        """
+        Возвращает ответы модели с RAG и без RAG для одного вопроса.
+        """
+        rag_result = self.answer_with_rag(
+            question=question,
+            model=model,
+            top_k=top_k,
+        )
+        no_rag_answer = self.answer_without_rag(
+            question=question,
+            model=model,
+        )
+
+        return {
+            "question": question,
+            "rag_answer": rag_result["answer"],
+            "rag_chunks": rag_result["chunks"],
+            "rag_context": rag_result["context"],
+            "no_rag_answer": no_rag_answer,
+        }
+
+    # ========= СЕРИАЛИЗАЦИЯ ИНДЕКСА =========
 
     def save(self, path='rag_index'):
         """Сохранение индекса в базу данных"""
@@ -198,15 +348,18 @@ class OllamaRAG:
         print(f"✓ Загружен индекс: {len(self.chunks)} чанков")
 
 
+# ========= ЗАГРУЗКА ДОКУМЕНТОВ =========
+
 def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
     """Загрузка всех документов из папки"""
-    documents = []
+    documents: List[Dict[str, str]] = []
     folder = Path(folder_path)
 
     if not folder.exists():
         print(f"⚠ Папка {folder_path} не найдена")
         return documents
 
+    # .md и .txt
     for ext in ['*.md', '*.txt']:
         for file_path in folder.glob(ext):
             print(f"Загрузка {file_path.name}...")
@@ -216,6 +369,7 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
                     'source': file_path.name
                 })
 
+    # .py
     for file_path in folder.glob('*.py'):
         print(f"Загрузка {file_path.name}...")
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -224,6 +378,7 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
                 'source': file_path.name
             })
 
+    # .pdf (если есть pdfplumber)
     try:
         import pdfplumber
         for file_path in folder.glob('*.pdf'):
@@ -241,8 +396,10 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
     return documents
 
 
+# ========= MAIN =========
+
 def main():
-    """Основной пайплайн индексации"""
+    """Основной пайплайн индексации + агент с RAG/без RAG"""
     print("=" * 80)
     print("RAG Индексация документов")
     print("=" * 80)
@@ -276,7 +433,7 @@ def main():
     rag.save(index_path)
 
     print("\n" + "=" * 80)
-    print("Тестовый поиск")
+    print("Тестовый поиск и сравнение ответов (RAG / без RAG)")
     print("=" * 80)
 
     while True:
@@ -287,17 +444,37 @@ def main():
         if not query:
             continue
 
-        results = rag.search(query, top_k=3)
+        try:
+            comparison = rag.compare_answers(query, model="llama3", top_k=1)
+        except Exception as e:
+            print(f"\n❌ Ошибка при запросе к LLM: {e}")
+            continue
 
         print("\n" + "-" * 80)
-        print("Результаты поиска:")
-        print("-" * 80)
+        print("Вопрос:")
+        print(query)
 
-        for i, result in enumerate(results, 1):
-            print(f"\n{i}. Источник: {result['metadata']['source']}")
-            print(f"   Релевантность: {result['score']:.4f}")
-            print(f"   Чанк: {result['metadata']['chunk_id'] + 1}/{result['metadata']['total_chunks']}")
-            print(f"\n   {result['text'][:400]}...")
+        print("\n" + "-" * 80)
+        print("Ответ С RAG (с контекстом из документов):")
+        print("-" * 80)
+        print(comparison["rag_answer"])
+
+        print("\n" + "-" * 80)
+        print("Ответ БЕЗ RAG (чистая модель):")
+        print("-" * 80)
+        print(comparison["no_rag_answer"])
+
+        print("\n" + "-" * 80)
+        print("Использованные чанки (для RAG):")
+        print("-" * 80)
+        for i, r in enumerate(comparison["rag_chunks"], 1):
+            meta = r["metadata"]
+            print(
+                f"\n[{i}] Источник: {meta['source']}, "
+                f"чанк: {meta['chunk_id'] + 1}/{meta['total_chunks']}, "
+                f"score: {r['score']:.4f}"
+            )
+            print(r["text"][:400] + "...")
 
     print("\n✓ Готово!")
 

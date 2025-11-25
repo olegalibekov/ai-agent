@@ -95,7 +95,7 @@ def test_rag_indexer():
 
         # Тест поиска
         print("\n  Тест поиска...")
-        results = rag.search('что такое RAG?', top_k=2)
+        results = rag.search('что такое RAG?', top_k=1)
 
         for i, result in enumerate(results, 1):
             print(f"\n  {i}. {result['metadata']['source']}")

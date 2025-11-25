@@ -35,7 +35,7 @@ def example_search():
         print(f"Запрос: {query}")
         print('=' * 80)
 
-        results = rag.search(query, top_k=2)
+        results = rag.search(query, top_k=1)
 
         for i, result in enumerate(results, 1):
             print(f"\n{i}. Источник: {result['metadata']['source']}")

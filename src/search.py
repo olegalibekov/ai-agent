@@ -36,7 +36,7 @@ def main():
         if not query:
             continue
 
-        results = rag.search(query, top_k=5)
+        results = rag.search(query, top_k=1)
 
         print("\n" + "-" * 80)
         print(f"Найдено {len(results)} релевантных чанков:")
