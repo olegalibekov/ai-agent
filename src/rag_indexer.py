@@ -7,21 +7,25 @@ import numpy as np
 import faiss
 import pickle
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 from pathlib import Path
 
 
 class OllamaRAG:
-    def __init__(self,
-                 embedding_model='nomic-embed-text',
-                 ollama_url='http://localhost:11434',
-                 auto_fallback=True):
+    def __init__(
+        self,
+        embedding_model: str = 'nomic-embed-text',
+        ollama_url: str = 'http://localhost:11434',
+        auto_fallback: bool = True,
+        similarity_threshold: float = 0.5,
+    ):
         self.embedding_model = embedding_model
         self.ollama_url = ollama_url
         self.auto_fallback = auto_fallback
         self.index = None
         self.chunks: List[str] = []
         self.metadata: List[Dict] = []
+        self.similarity_threshold = similarity_threshold
 
         # Альтернативные модели для embeddings (в порядке приоритета)
         self.fallback_models = [
@@ -32,7 +36,7 @@ class OllamaRAG:
 
     # ========= EMBEDDINGS =========
 
-    def get_embedding(self, text: str, max_retries=1) -> np.ndarray:
+    def get_embedding(self, text: str, max_retries: int = 1) -> np.ndarray:
         """Получение эмбеддинга с truncation и retry через Ollama /api/embed"""
         # Ограничиваем размер текста (nomic-embed-text: ~8192 токенов)
         max_chars = 8000 * 4  # ~8000 токенов * 4 символа на токен
@@ -86,8 +90,8 @@ class OllamaRAG:
 
     # ========= ЧАНКИРОВАНИЕ =========
 
-    def chunk_text(self, text: str, chunk_size=100, overlap=50) -> List[str]:
-        """Разбивка текста на чанки (уменьшенный размер для надёжности).
+    def chunk_text(self, text: str, chunk_size: int = 100, overlap: int = 50) -> List[str]:
+        """Разбивка текста на чанки.
         chunk_size/overlap: в токенах (примерно), пересчёт в символы.
         """
         char_per_token = 4
@@ -155,10 +159,19 @@ class OllamaRAG:
 
         print(f"\n✓ Индекс создан: {len(self.chunks)} чанков, размерность {dimension}")
 
-    # ========= ПОИСК =========
+    # ========= ПОИСК + ФИЛЬТРАЦИЯ =========
 
-    def search(self, query: str, top_k=1) -> List[Dict]:
-        """Поиск релевантных чанков"""
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        min_score: Optional[float] = None,
+    ) -> List[Dict]:
+        """Поиск релевантных чанков.
+
+        top_k: сколько кандидатов взять из FAISS.
+        min_score: порог отсечения по косинусному сходству (если None — без фильтра).
+        """
         if self.index is None:
             raise ValueError("Индекс не создан. Сначала вызовите add_documents() или load()")
 
@@ -170,12 +183,22 @@ class OllamaRAG:
             top_k
         )
 
-        results = []
+        results: List[Dict] = []
         for score, idx in zip(distances[0], indices[0]):
+            # FAISS может вернуть -1, если результатов нет
+            if idx < 0:
+                continue
+
+            score = float(score)
+
+            # Фильтр по порогу — второй этап после поиска (простенький rerank/фильтрация)
+            if min_score is not None and score < min_score:
+                continue
+
             results.append({
                 'text': self.chunks[idx],
                 'metadata': self.metadata[idx],
-                'score': float(score)
+                'score': score,
             })
 
         return results
@@ -215,18 +238,22 @@ class OllamaRAG:
         self,
         question: str,
         model: str = "llama3",
-        top_k: int = 1,
+        top_k: int = 5,
         max_context_chars: int = 8000,
+        min_score: Optional[float] = None,
     ) -> Dict:
         """
         Ответ с использованием RAG:
-        - ищем релевантные чанки
-        - добавляем их в контекст
-        - отправляем запрос к LLM
-        Возвращаем dict с ответом и использованными чанками.
+        - ищем релевантные чанки через FAISS,
+        - опционально фильтруем по порогу min_score,
+        - добавляем их в контекст,
+        - отправляем запрос к LLM.
+
+        min_score: если задан, отсеивает чанки с низким сходством.
+        Возвращает dict с ответом и использованными чанками.
         """
-        # 1. Поиск релевантных чанков
-        results = self.search(question, top_k=top_k)
+        # 1. Поиск релевантных чанков (с/без фильтра)
+        results = self.search(question, top_k=top_k, min_score=min_score)
 
         # 2. Собираем контекст
         context_chunks = []
@@ -280,8 +307,7 @@ class OllamaRAG:
         system_prompt = (
             "Ты умный технический ассистент. "
             "Отвечай строго на русском языке. "
-            "Отвечай только на основе предоставленного контекста, "
-            "если это возможно. Если в контексте нет ответа — честно скажи об этом."
+            "Отвечай честно: если не знаешь ответа, так и скажи."
         )
 
         messages = [
@@ -297,16 +323,31 @@ class OllamaRAG:
         self,
         question: str,
         model: str = "llama3",
-        top_k: int = 1,
+        top_k: int = 5,
     ) -> Dict:
         """
-        Возвращает ответы модели с RAG и без RAG для одного вопроса.
+        Возвращает ответы модели:
+        - с RAG без фильтра,
+        - с RAG и фильтрацией по similarity_threshold,
+        - без RAG (чистая модель).
         """
-        rag_result = self.answer_with_rag(
+        # RAG без фильтра
+        rag_no_filter = self.answer_with_rag(
             question=question,
             model=model,
             top_k=top_k,
+            min_score=None,
         )
+
+        # RAG с фильтром по порогу
+        rag_filtered = self.answer_with_rag(
+            question=question,
+            model=model,
+            top_k=top_k,
+            min_score=self.similarity_threshold,
+        )
+
+        # Без RAG
         no_rag_answer = self.answer_without_rag(
             question=question,
             model=model,
@@ -314,15 +355,22 @@ class OllamaRAG:
 
         return {
             "question": question,
-            "rag_answer": rag_result["answer"],
-            "rag_chunks": rag_result["chunks"],
-            "rag_context": rag_result["context"],
+
+            "rag_no_filter_answer": rag_no_filter["answer"],
+            "rag_no_filter_chunks": rag_no_filter["chunks"],
+            "rag_no_filter_context": rag_no_filter["context"],
+
+            "rag_filtered_answer": rag_filtered["answer"],
+            "rag_filtered_chunks": rag_filtered["chunks"],
+            "rag_filtered_context": rag_filtered["context"],
+            "similarity_threshold": self.similarity_threshold,
+
             "no_rag_answer": no_rag_answer,
         }
 
     # ========= СЕРИАЛИЗАЦИЯ ИНДЕКСА =========
 
-    def save(self, path='rag_index'):
+    def save(self, path: str = 'rag_index'):
         """Сохранение индекса в базу данных"""
         Path(path).mkdir(exist_ok=True)
         faiss.write_index(self.index, f'{path}/vectors.faiss')
@@ -333,13 +381,14 @@ class OllamaRAG:
                 'metadata': self.metadata,
                 'config': {
                     'embedding_model': self.embedding_model,
-                    'total_chunks': len(self.chunks)
+                    'total_chunks': len(self.chunks),
+                    'similarity_threshold': self.similarity_threshold,
                 }
             }, f)
 
         print(f"✓ Индекс сохранён в {path}/")
 
-    def load(self, path='rag_index'):
+    def load(self, path: str = 'rag_index'):
         """Загрузка индекса из базы данных"""
         self.index = faiss.read_index(f'{path}/vectors.faiss')
 
@@ -347,6 +396,10 @@ class OllamaRAG:
             data = pickle.load(f)
             self.chunks = data['chunks']
             self.metadata = data['metadata']
+            config = data.get('config') or {}
+            # можно восстановить similarity_threshold, если он там есть
+            if 'similarity_threshold' in config:
+                self.similarity_threshold = config['similarity_threshold']
 
         print(f"✓ Загружен индекс: {len(self.chunks)} чанков")
 
@@ -407,10 +460,12 @@ def main():
     print("RAG Индексация документов")
     print("=" * 80)
 
-    rag = OllamaRAG()
+    # можно тюнить similarity_threshold здесь
+    rag = OllamaRAG(similarity_threshold=0.8)
 
     docs_folder = input("\nПуть к папке с документами (по умолчанию './documents'): ").strip()
     if not docs_folder:
+        # подставь свой путь или оставь './documents'
         docs_folder = '/Users/fehty/PycharmProjects/ai-agent/documents/'
 
     documents = load_documents_from_folder(docs_folder)
@@ -436,7 +491,7 @@ def main():
     rag.save(index_path)
 
     print("\n" + "=" * 80)
-    print("Тестовый поиск и сравнение ответов (RAG / без RAG)")
+    print("Тестовый поиск и сравнение ответов (RAG без фильтра / RAG с фильтром / без RAG)")
     print("=" * 80)
 
     while True:
@@ -448,7 +503,8 @@ def main():
             continue
 
         try:
-            comparison = rag.compare_answers(query, model="llama3", top_k=1)
+            # Берём несколько кандидатов, чтобы фильтр имел смысл
+            comparison = rag.compare_answers(query, model="llama3", top_k=5)
         except Exception as e:
             print(f"\n❌ Ошибка при запросе к LLM: {e}")
             continue
@@ -458,9 +514,14 @@ def main():
         print(query)
 
         print("\n" + "-" * 80)
-        print("Ответ С RAG (с контекстом из документов):")
+        print("Ответ С RAG (БЕЗ фильтра):")
         print("-" * 80)
-        print(comparison["rag_answer"])
+        print(comparison["rag_no_filter_answer"])
+
+        print("\n" + "-" * 80)
+        print(f"Ответ С RAG (С ФИЛЬТРОМ, порог={comparison['similarity_threshold']:.2f}):")
+        print("-" * 80)
+        print(comparison["rag_filtered_answer"])
 
         print("\n" + "-" * 80)
         print("Ответ БЕЗ RAG (чистая модель):")
@@ -468,9 +529,9 @@ def main():
         print(comparison["no_rag_answer"])
 
         print("\n" + "-" * 80)
-        print("Использованные чанки (для RAG):")
+        print("Использованные чанки для RAG БЕЗ фильтра:")
         print("-" * 80)
-        for i, r in enumerate(comparison["rag_chunks"], 1):
+        for i, r in enumerate(comparison["rag_no_filter_chunks"], 1):
             meta = r["metadata"]
             print(
                 f"\n[{i}] Источник: {meta['source']}, "
@@ -478,6 +539,21 @@ def main():
                 f"score: {r['score']:.4f}"
             )
             print(r["text"][:400] + "...")
+
+        print("\n" + "-" * 80)
+        print("Использованные чанки для RAG С ФИЛЬТРОМ:")
+        print("-" * 80)
+        if not comparison["rag_filtered_chunks"]:
+            print("⛔ Ни один чанк не прошёл порог по сходству.")
+        else:
+            for i, r in enumerate(comparison["rag_filtered_chunks"], 1):
+                meta = r["metadata"]
+                print(
+                    f"\n[{i}] Источник: {meta['source']}, "
+                    f"чанк: {meta['chunk_id'] + 1}/{meta['total_chunks']}, "
+                    f"score: {r['score']:.4f}"
+                )
+                print(r["text"][:400] + "...")
 
     print("\n✓ Готово!")
 
