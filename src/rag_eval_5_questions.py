@@ -4,7 +4,6 @@ from pathlib import Path
 
 from rag_indexer import OllamaRAG, load_documents_from_folder
 
-# Вопросы, заточенные под твои txt-документы
 QUESTIONS = [
     "Какие подходы к разбиению текста на чанки перечислены и каковы их плюсы и минусы?",
     "Почему важно использовать overlap при разбиении текста на чанки и какие ошибки бывают при чанкинге?",
