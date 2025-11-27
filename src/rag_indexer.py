@@ -1,15 +1,12 @@
-# rag_indexer.py
 import time
 import re
 from pathlib import Path
 from typing import List, Dict, Optional
 
-import ollama  # можно удалить, если не используешь ollama.* напрямую
 import requests
 import numpy as np
 import faiss
 import pickle
-import json
 
 
 class OllamaRAG:

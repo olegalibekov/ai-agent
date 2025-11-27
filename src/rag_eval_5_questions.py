@@ -1,4 +1,3 @@
-# rag_eval_5_questions.py
 import re
 from pathlib import Path
 
