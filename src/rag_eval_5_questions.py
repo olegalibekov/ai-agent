@@ -91,6 +91,7 @@ def main():
 
         ok = has_citations(answer)
         print("\nПроверка ссылок:")
+        print(f"Содержит ли ответ ссылки вида [N]? -> {'ДА' if ok else 'НЕТ'}")
 
         if result["chunks"]:
             print("\nИспользованные источники (по данным ретривера):")
