@@ -1,5 +1,8 @@
 # rag_indexer.py
 import time
+import re
+from pathlib import Path
+from typing import List, Dict, Optional
 
 import ollama  # можно удалить, если не используешь ollama.* напрямую
 import requests
@@ -7,17 +10,15 @@ import numpy as np
 import faiss
 import pickle
 import json
-from typing import List, Dict, Optional
-from pathlib import Path
 
 
 class OllamaRAG:
     def __init__(
-        self,
-        embedding_model: str = 'nomic-embed-text',
-        ollama_url: str = 'http://localhost:11434',
-        auto_fallback: bool = True,
-        similarity_threshold: float = 0.5,
+            self,
+            embedding_model: str = 'nomic-embed-text',
+            ollama_url: str = 'http://localhost:11434',
+            auto_fallback: bool = True,
+            similarity_threshold: float = 0.5,
     ):
         self.embedding_model = embedding_model
         self.ollama_url = ollama_url
@@ -38,7 +39,6 @@ class OllamaRAG:
 
     def get_embedding(self, text: str, max_retries: int = 1) -> np.ndarray:
         """Получение эмбеддинга с truncation и retry через Ollama /api/embed"""
-        # Ограничиваем размер текста (nomic-embed-text: ~8192 токенов)
         max_chars = 8000 * 4  # ~8000 токенов * 4 символа на токен
         if len(text) > max_chars:
             text = text[:max_chars]
@@ -162,10 +162,10 @@ class OllamaRAG:
     # ========= ПОИСК + ФИЛЬТРАЦИЯ =========
 
     def search(
-        self,
-        query: str,
-        top_k: int = 5,
-        min_score: Optional[float] = None,
+            self,
+            query: str,
+            top_k: int = 5,
+            min_score: Optional[float] = None,
     ) -> List[Dict]:
         """Поиск релевантных чанков.
 
@@ -185,13 +185,11 @@ class OllamaRAG:
 
         results: List[Dict] = []
         for score, idx in zip(distances[0], indices[0]):
-            # FAISS может вернуть -1, если результатов нет
             if idx < 0:
                 continue
 
             score = float(score)
 
-            # Фильтр по порогу — второй этап после поиска (простенький rerank/фильтрация)
             if min_score is not None and score < min_score:
                 continue
 
@@ -202,6 +200,48 @@ class OllamaRAG:
             })
 
         return results
+
+    # ========= КОНТЕКСТ С ССЫЛКАМИ =========
+
+    def _build_context_with_refs(
+            self,
+            results: List[Dict],
+            max_context_chars: int = 8000,
+    ) -> tuple[str, List[Dict]]:
+        """
+        Формирует контекст для LLM с пронумерованными источниками.
+
+        Возвращает:
+        - context: строка с блоками вида
+          `[1] Источник: file.txt (чанк 1/3)\n...текст...`
+        - used_chunks: список чанков, каждому добавлен ключ 'ref_id' (номер [N])
+        """
+        context_parts: List[str] = []
+        used_chunks: List[Dict] = []
+        total_len = 0
+
+        for ref_id, r in enumerate(results, start=1):
+            chunk = r["text"].strip()
+            meta = r["metadata"]
+
+            header = (
+                f"[{ref_id}] Источник: {meta['source']} "
+                f"(чанк {meta['chunk_id'] + 1}/{meta['total_chunks']})\n"
+            )
+            piece = header + chunk
+
+            if total_len + len(piece) > max_context_chars:
+                break
+
+            context_parts.append(piece)
+            total_len += len(piece) + 2
+
+            r_with_id = dict(r)
+            r_with_id["ref_id"] = ref_id
+            used_chunks.append(r_with_id)
+
+        context = "\n\n---\n\n".join(context_parts)
+        return context, used_chunks
 
     # ========= LLM (CHAT) =========
 
@@ -232,53 +272,58 @@ class OllamaRAG:
             print(f"❌ Ошибка при запросе к LLM: {e}")
             raise
 
-    # ========= ОТВЕТ С RAG =========
+    # ========= ОТВЕТ С RAG (С ОБЯЗАТЕЛЬНЫМИ ССЫЛКАМИ) =========
 
     def answer_with_rag(
-        self,
-        question: str,
-        model: str = "llama3",
-        top_k: int = 5,
-        max_context_chars: int = 8000,
-        min_score: Optional[float] = None,
+            self,
+            question: str,
+            model: str = "llama3",
+            top_k: int = 5,
+            max_context_chars: int = 8000,
+            min_score: Optional[float] = None,
     ) -> Dict:
         """
-        Ответ с использованием RAG:
-        - ищем релевантные чанки через FAISS,
-        - опционально фильтруем по порогу min_score,
-        - добавляем их в контекст,
-        - отправляем запрос к LLM.
-
-        min_score: если задан, отсеивает чанки с низким сходством.
-        Возвращает dict с ответом и использованными чанками.
+        Ответ с использованием RAG и ОБЯЗАТЕЛЬНЫМИ ссылками на источники.
         """
-        # 1. Поиск релевантных чанков (с/без фильтра)
-        results = self.search(question, top_k=top_k, min_score=min_score)
+        # 1. Поиск релевантных чанков
+        raw_results = self.search(question, top_k=top_k, min_score=min_score)
 
-        # 2. Собираем контекст
-        context_chunks = []
-        total_len = 0
-        for r in results:
-            chunk = r["text"]
-            if total_len + len(chunk) > max_context_chars:
-                break
-            context_chunks.append(chunk)
-            total_len += len(chunk)
-
-        context = "\n\n---\n\n".join(context_chunks)
-
-        # 3. Формируем сообщения для LLM
-        system_prompt = (
-            "Ты технический ассистент. "
-            "Отвечай строго на русском языке. "
-            "Отвечай только на основе предоставленного контекста, "
-            "если это возможно. Если в контексте нет ответа — скажи об этом."
+        # 2. Контекст с номерами источников
+        context, used_chunks = self._build_context_with_refs(
+            raw_results,
+            max_context_chars=max_context_chars,
         )
+
+        # 3. Промпты
+        system_prompt = (
+            "Ты технический ассистент и работаешь в режиме RAG.\n"
+            "Всегда отвечай строго на русском языке.\n"
+            "Ты МОЖЕШЬ использовать только информацию из контекста.\n"
+            "Если в контексте нет ответа на вопрос — честно скажи об этом и не выдумывай факты.\n\n"
+            "Очень важные правила:\n"
+            "1) Каждый важный факт в ответе должен сопровождаться ссылкой на источник "
+            "в формате [N], где N — номер фрагмента из контекста.\n"
+            "2) В конце ответа добавь раздел 'Источники:' и перечисли использованные номера с кратким описанием.\n"
+            "3) Если контекст пустой или не содержит ответа, напиши, что не можешь ответить на основе базы, "
+            "и не добавляй ссылок."
+        )
+
+        if context:
+            context_block = (
+                "Контекст (фрагменты документов с номерами [N]):\n"
+                f"{context}"
+            )
+        else:
+            context_block = "Контекст (фрагменты документов): [ПУСТО]"
 
         user_content = (
             f"Вопрос пользователя:\n{question}\n\n"
-            f"Контекст (фрагменты документов):\n{context}\n\n"
-            "Ответь максимально полезно."
+            f"{context_block}\n\n"
+            "Сформируй ответ, строго следуя правилам:\n"
+            "- Используй только информацию из контекста.\n"
+            "- Для каждого важного утверждения добавляй ссылку вида [N].\n"
+            "- В конце добавь раздел 'Источники:' с перечислением использованных номеров, "
+            "например: 'Источники: [1], [3]'."
         )
 
         messages = [
@@ -291,19 +336,16 @@ class OllamaRAG:
         return {
             "answer": answer,
             "context": context,
-            "chunks": results,
+            "chunks": used_chunks,  # здесь уже есть 'ref_id'
         }
 
-    # ========= ОТВЕТ БЕЗ RAG =========
+    # ========= ОТВЕТ БЕЗ RAG (на будущее, не обязателен для задания) =========
 
     def answer_without_rag(
-        self,
-        question: str,
-        model: str = "llama3",
+            self,
+            question: str,
+            model: str = "llama3",
     ) -> str:
-        """
-        Базовый ответ модели без какого-либо контекста (без RAG).
-        """
         system_prompt = (
             "Ты умный технический ассистент. "
             "Отвечай строго на русском языке. "
@@ -316,57 +358,6 @@ class OllamaRAG:
         ]
 
         return self._chat(messages, model=model)
-
-    # ========= СРАВНЕНИЕ =========
-
-    def compare_answers(
-        self,
-        question: str,
-        model: str = "llama3",
-        top_k: int = 5,
-    ) -> Dict:
-        """
-        Возвращает ответы модели:
-        - с RAG без фильтра,
-        - с RAG и фильтрацией по similarity_threshold,
-        - без RAG (чистая модель).
-        """
-        # RAG без фильтра
-        rag_no_filter = self.answer_with_rag(
-            question=question,
-            model=model,
-            top_k=top_k,
-            min_score=None,
-        )
-
-        # RAG с фильтром по порогу
-        rag_filtered = self.answer_with_rag(
-            question=question,
-            model=model,
-            top_k=top_k,
-            min_score=self.similarity_threshold,
-        )
-
-        # Без RAG
-        no_rag_answer = self.answer_without_rag(
-            question=question,
-            model=model,
-        )
-
-        return {
-            "question": question,
-
-            "rag_no_filter_answer": rag_no_filter["answer"],
-            "rag_no_filter_chunks": rag_no_filter["chunks"],
-            "rag_no_filter_context": rag_no_filter["context"],
-
-            "rag_filtered_answer": rag_filtered["answer"],
-            "rag_filtered_chunks": rag_filtered["chunks"],
-            "rag_filtered_context": rag_filtered["context"],
-            "similarity_threshold": self.similarity_threshold,
-
-            "no_rag_answer": no_rag_answer,
-        }
 
     # ========= СЕРИАЛИЗАЦИЯ ИНДЕКСА =========
 
@@ -397,7 +388,6 @@ class OllamaRAG:
             self.chunks = data['chunks']
             self.metadata = data['metadata']
             config = data.get('config') or {}
-            # можно восстановить similarity_threshold, если он там есть
             if 'similarity_threshold' in config:
                 self.similarity_threshold = config['similarity_threshold']
 
@@ -452,20 +442,17 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
     return documents
 
 
-# ========= MAIN =========
+# ========= MAIN (простая индексация + ручной режим вопросов) =========
 
 def main():
-    """Основной пайплайн индексации + агент с RAG/без RAG"""
     print("=" * 80)
-    print("RAG Индексация документов")
+    print("RAG Индексация документов (с обязательными ссылками на источники)")
     print("=" * 80)
 
-    # можно тюнить similarity_threshold здесь
     rag = OllamaRAG(similarity_threshold=0.8)
 
     docs_folder = input("\nПуть к папке с документами (по умолчанию './documents'): ").strip()
     if not docs_folder:
-        # подставь свой путь или оставь './documents'
         docs_folder = '/Users/fehty/PycharmProjects/ai-agent/documents/'
 
     documents = load_documents_from_folder(docs_folder)
@@ -491,69 +478,46 @@ def main():
     rag.save(index_path)
 
     print("\n" + "=" * 80)
-    print("Тестовый поиск и сравнение ответов (RAG без фильтра / RAG с фильтром / без RAG)")
+    print("Режим вопросов (RAG с обязательными ссылками). Введите 'exit' для выхода.")
     print("=" * 80)
 
     while True:
-        query = input("\nВаш вопрос (или 'exit' для выхода): ").strip()
+        query = input("\nВаш вопрос: ").strip()
         if query.lower() in ['exit', 'quit', 'выход']:
             break
-
         if not query:
             continue
 
         try:
-            # Берём несколько кандидатов, чтобы фильтр имел смысл
-            comparison = rag.compare_answers(query, model="llama3", top_k=5)
+            result = rag.answer_with_rag(
+                question=query,
+                model="llama3",
+                top_k=5,
+                max_context_chars=8000,
+                min_score=rag.similarity_threshold,
+            )
         except Exception as e:
             print(f"\n❌ Ошибка при запросе к LLM: {e}")
             continue
 
+        answer = result["answer"]
         print("\n" + "-" * 80)
-        print("Вопрос:")
-        print(query)
-
-        print("\n" + "-" * 80)
-        print("Ответ С RAG (БЕЗ фильтра):")
+        print("Ответ модели:")
         print("-" * 80)
-        print(comparison["rag_no_filter_answer"])
+        print(answer)
 
-        print("\n" + "-" * 80)
-        print(f"Ответ С RAG (С ФИЛЬТРОМ, порог={comparison['similarity_threshold']:.2f}):")
-        print("-" * 80)
-        print(comparison["rag_filtered_answer"])
+        has_citations = re.search(r"\[\d+\]", answer) is not None
+        print("\nПроверка ссылок: содержит ли ответ [N]? ->", "ДА" if has_citations else "НЕТ")
 
-        print("\n" + "-" * 80)
-        print("Ответ БЕЗ RAG (чистая модель):")
-        print("-" * 80)
-        print(comparison["no_rag_answer"])
-
-        print("\n" + "-" * 80)
-        print("Использованные чанки для RAG БЕЗ фильтра:")
-        print("-" * 80)
-        for i, r in enumerate(comparison["rag_no_filter_chunks"], 1):
-            meta = r["metadata"]
-            print(
-                f"\n[{i}] Источник: {meta['source']}, "
-                f"чанк: {meta['chunk_id'] + 1}/{meta['total_chunks']}, "
-                f"score: {r['score']:.4f}"
-            )
-            print(r["text"][:400] + "...")
-
-        print("\n" + "-" * 80)
-        print("Использованные чанки для RAG С ФИЛЬТРОМ:")
-        print("-" * 80)
-        if not comparison["rag_filtered_chunks"]:
-            print("⛔ Ни один чанк не прошёл порог по сходству.")
-        else:
-            for i, r in enumerate(comparison["rag_filtered_chunks"], 1):
-                meta = r["metadata"]
+        if result["chunks"]:
+            print("\nИспользованные источники:")
+            for ch in result["chunks"]:
+                meta = ch["metadata"]
+                ref_id = ch.get("ref_id", "?")
                 print(
-                    f"\n[{i}] Источник: {meta['source']}, "
-                    f"чанк: {meta['chunk_id'] + 1}/{meta['total_chunks']}, "
-                    f"score: {r['score']:.4f}"
+                    f"  [{ref_id}] {meta['source']} "
+                    f"(чанк {meta['chunk_id'] + 1}/{meta['total_chunks']}, score={ch['score']:.4f})"
                 )
-                print(r["text"][:400] + "...")
 
     print("\n✓ Готово!")
 
