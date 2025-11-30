@@ -25,18 +25,14 @@ class OllamaRAG:
         self.metadata: List[Dict] = []
         self.similarity_threshold = similarity_threshold
 
-        # Альтернативные модели для embeddings (в порядке приоритета)
         self.fallback_models = [
             'nomic-embed-text',
-            # 'mxbai-embed-large',
-            # 'all-minilm',
         ]
 
     # ========= EMBEDDINGS =========
 
     def get_embedding(self, text: str, max_retries: int = 1) -> np.ndarray:
-        """Получение эмбеддинга с truncation и retry через Ollama /api/embed"""
-        max_chars = 8000 * 4  # ~8000 токенов * 4 символа на токен
+        max_chars = 8000 * 4
         if len(text) > max_chars:
             text = text[:max_chars]
             print(f"⚠ Текст обрезан до {max_chars} символов")
@@ -69,7 +65,6 @@ class OllamaRAG:
                     raise KeyError("embedding not found in response")
 
                 vec = np.array(data['embeddings'][0], dtype=np.float32)
-
                 if vec.size == 0:
                     raise ValueError("empty embedding")
 
@@ -88,9 +83,6 @@ class OllamaRAG:
     # ========= ЧАНКИРОВАНИЕ =========
 
     def chunk_text(self, text: str, chunk_size: int = 100, overlap: int = 50) -> List[str]:
-        """Разбивка текста на чанки.
-        chunk_size/overlap: в токенах (примерно), пересчёт в символы.
-        """
         char_per_token = 4
         chunk_chars = chunk_size * char_per_token
         overlap_chars = overlap * char_per_token
@@ -102,7 +94,6 @@ class OllamaRAG:
             end = start + chunk_chars
             chunk = text[start:end]
 
-            # Пытаемся аккуратно обрезать по точке или переводу строки
             if end < len(text):
                 last_period = chunk.rfind('.')
                 last_newline = chunk.rfind('\n')
@@ -122,9 +113,7 @@ class OllamaRAG:
     # ========= ПОСТРОЕНИЕ ИНДЕКСА =========
 
     def add_documents(self, documents: List[Dict[str, str]]):
-        """Добавление документов в индекс"""
         print(f"Обработка {len(documents)} документов...")
-
         all_embeddings = []
 
         for doc in documents:
@@ -158,29 +147,19 @@ class OllamaRAG:
 
     # ========= ПОИСК + ФИЛЬТРАЦИЯ =========
 
-    def search(
-            self,
-            query: str,
-            top_k: int = 5,
-            min_score: Optional[float] = None,
-    ) -> List[Dict]:
-        """Поиск релевантных чанков.
-
-        top_k: сколько кандидатов взять из FAISS.
-        min_score: порог отсечения по косинусному сходству (если None — без фильтра).
-        """
+    def search(self, query: str, top_k: int = 5, min_score: Optional[float] = None) -> List[Dict]:
         if self.index is None:
-            raise ValueError("Индекс не создан. Сначала вызовите add_documents() или load()")
+            raise ValueError("Индекс не создан.")
 
         query_embedding = self.get_embedding(query)
         query_embedding = query_embedding / np.linalg.norm(query_embedding)
 
         distances, indices = self.index.search(
-            query_embedding.reshape(1, -1).astype('float32'),
-            top_k
+            query_embedding.reshape(1, -1).astype('float32'), top_k
         )
 
         results: List[Dict] = []
+
         for score, idx in zip(distances[0], indices[0]):
             if idx < 0:
                 continue
@@ -198,21 +177,9 @@ class OllamaRAG:
 
         return results
 
-    # ========= КОНТЕКСТ С ССЫЛКАМИ =========
+    # ========= КОНТЕКСТ С ИСТОЧНИКАМИ =========
 
-    def _build_context_with_refs(
-            self,
-            results: List[Dict],
-            max_context_chars: int = 8000,
-    ) -> tuple[str, List[Dict]]:
-        """
-        Формирует контекст для LLM с пронумерованными источниками.
-
-        Возвращает:
-        - context: строка с блоками вида
-          `[1] Источник: file.txt (чанк 1/3)\n...текст...`
-        - used_chunks: список чанков, каждому добавлен ключ 'ref_id' (номер [N])
-        """
+    def _build_context_with_refs(self, results: List[Dict], max_context_chars: int = 8000):
         context_parts: List[str] = []
         used_chunks: List[Dict] = []
         total_len = 0
@@ -240,36 +207,28 @@ class OllamaRAG:
         context = "\n\n---\n\n".join(context_parts)
         return context, used_chunks
 
-    # ========= LLM (CHAT) =========
+    # ========= LLM CHAT =========
 
     def _chat(self, messages, model: str = "llama3") -> str:
-        """
-        Вызов LLM через Ollama /api/chat (без стриминга).
-        messages: список dict-ов вида {'role': 'user'|'system'|'assistant', 'content': '...'}
-        """
         try:
             response = requests.post(
                 f"{self.ollama_url}/api/chat",
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "stream": False,
-                },
+                json={"model": model, "messages": messages, "stream": False},
                 timeout=120,
             )
 
             if response.status_code != 200:
-                print(f"❌ Ошибка LLM {response.status_code}")
-                print("Ответ:", response.text)
+                print("❌ Ошибка LLM:", response.text)
                 response.raise_for_status()
 
             data = response.json()
             return data["message"]["content"]
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Ошибка при запросе к LLM: {e}")
+
+        except Exception as e:
+            print(f"❌ Ошибка при запросе к модели: {e}")
             raise
 
-    # ========= ОТВЕТ С RAG (С ОБЯЗАТЕЛЬНЫМИ ССЫЛКАМИ) =========
+    # ========= ОТВЕТ С RAG =========
 
     def answer_with_rag(
             self,
@@ -278,88 +237,43 @@ class OllamaRAG:
             top_k: int = 5,
             max_context_chars: int = 8000,
             min_score: Optional[float] = None,
-    ) -> Dict:
-        """
-        Ответ с использованием RAG и ОБЯЗАТЕЛЬНЫМИ ссылками на источники.
-        """
-        # 1. Поиск релевантных чанков
+    ):
         raw_results = self.search(question, top_k=top_k, min_score=min_score)
+        context, used_chunks = self._build_context_with_refs(raw_results, max_context_chars)
 
-        # 2. Контекст с номерами источников
-        context, used_chunks = self._build_context_with_refs(
-            raw_results,
-            max_context_chars=max_context_chars,
-        )
-
-        # 3. Промпты
         system_prompt = (
             "Ты технический ассистент и работаешь в режиме RAG.\n"
-            "Всегда отвечай СТРОГО на русском языке.\n"
-            "Ты МОЖЕШЬ использовать только информацию из контекста.\n"
-            "Если в контексте нет ответа на вопрос — честно скажи об этом и не выдумывай факты.\n\n"
-            "Очень важные правила:\n"
-            "1) Каждый важный факт в ответе должен сопровождаться ссылкой на источник "
-            "в формате [N], где N — номер фрагмента из контекста.\n"
-            "2) В конце ответа добавь раздел 'Источники:' и перечисли использованные номера с кратким описанием.\n"
-            "3) Если контекст пустой или не содержит ответа, напиши, что не можешь ответить на основе базы, "
-            "и не добавляй ссылок."
+            "Отвечай строго на русском языке.\n"
+            "Используй ТОЛЬКО информацию из контекста.\n"
+            "Каждый важный факт должен иметь ссылку вида [N].\n"
+            "В конце обязательно добавляй блок 'Источники:'."
         )
 
         if context:
-            context_block = (
-                "Контекст (фрагменты документов с номерами [N]):\n"
-                f"{context}"
-            )
+            context_block = f"Контекст:\n{context}"
         else:
-            context_block = "Контекст (фрагменты документов): [ПУСТО]"
+            context_block = "Контекст: [Пусто]"
 
         user_content = (
-            f"Вопрос пользователя:\n{question}\n\n"
+            f"Вопрос:\n{question}\n\n"
             f"{context_block}\n\n"
-            "Сформируй ответ, строго следуя правилам:\n"
-            "- Используй только информацию из контекста.\n"
-            "- Для каждого важного утверждения добавляй ссылку вида [N].\n"
-            "- В конце добавь раздел 'Источники:' с перечислением использованных номеров, "
-            "например: 'Источники: [1], [3]'."
+            "Сформируй ответ с обязательными ссылками [N]."
         )
 
-        messages = [
+        answer = self._chat([
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
-        ]
-
-        answer = self._chat(messages, model=model)
+        ], model=model)
 
         return {
             "answer": answer,
             "context": context,
-            "chunks": used_chunks,  # здесь уже есть 'ref_id'
+            "chunks": used_chunks,
         }
 
-    # ========= ОТВЕТ БЕЗ RAG (на будущее, не обязателен для задания) =========
-
-    def answer_without_rag(
-            self,
-            question: str,
-            model: str = "llama3",
-    ) -> str:
-        system_prompt = (
-            "Ты технический ассистент. "
-            "Отвечай строго на русском языке. "
-            "Отвечай честно: если не знаешь ответа, так и скажи."
-        )
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question},
-        ]
-
-        return self._chat(messages, model=model)
-
-    # ========= СЕРИАЛИЗАЦИЯ ИНДЕКСА =========
+    # ========= СЕРИАЛИЗАЦИЯ =========
 
     def save(self, path: str = 'rag_index'):
-        """Сохранение индекса в базу данных"""
         Path(path).mkdir(exist_ok=True)
         faiss.write_index(self.index, f'{path}/vectors.faiss')
 
@@ -377,7 +291,6 @@ class OllamaRAG:
         print(f"✓ Индекс сохранён в {path}/")
 
     def load(self, path: str = 'rag_index'):
-        """Загрузка индекса из базы данных"""
         self.index = faiss.read_index(f'{path}/vectors.faiss')
 
         with open(f'{path}/data.pkl', 'rb') as f:
@@ -385,8 +298,7 @@ class OllamaRAG:
             self.chunks = data['chunks']
             self.metadata = data['metadata']
             config = data.get('config') or {}
-            if 'similarity_threshold' in config:
-                self.similarity_threshold = config['similarity_threshold']
+            self.similarity_threshold = config.get('similarity_threshold', 0.5)
 
         print(f"✓ Загружен индекс: {len(self.chunks)} чанков")
 
@@ -394,7 +306,6 @@ class OllamaRAG:
 # ========= ЗАГРУЗКА ДОКУМЕНТОВ =========
 
 def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
-    """Загрузка всех документов из папки"""
     documents: List[Dict[str, str]] = []
     folder = Path(folder_path)
 
@@ -402,8 +313,7 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
         print(f"⚠ Папка {folder_path} не найдена")
         return documents
 
-    # .md и .txt
-    for ext in ['*.md', '*.txt']:
+    for ext in ['*.md', '*.txt', '*.py']:
         for file_path in folder.glob(ext):
             print(f"Загрузка {file_path.name}...")
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -412,111 +322,41 @@ def load_documents_from_folder(folder_path: str) -> List[Dict[str, str]]:
                     'source': file_path.name
                 })
 
-    # .py
-    for file_path in folder.glob('*.py'):
-        print(f"Загрузка {file_path.name}...")
-        with open(file_path, 'r', encoding='utf-8') as f:
-            documents.append({
-                'text': f.read(),
-                'source': file_path.name
-            })
-
-    # .pdf (если есть pdfplumber)
     try:
         import pdfplumber
         for file_path in folder.glob('*.pdf'):
             print(f"Загрузка {file_path.name}...")
             with pdfplumber.open(file_path) as pdf:
                 text = '\n'.join(page.extract_text() or '' for page in pdf.pages)
-                documents.append({
-                    'text': text,
-                    'source': file_path.name
-                })
+                documents.append({'text': text, 'source': file_path.name})
     except ImportError:
         pass
 
-    print(f"\n✓ Загружено {len(documents)} документов")
+    print(f"✓ Загружено {len(documents)} документов")
     return documents
 
 
-# ========= MAIN (простая индексация + ручной режим вопросов) =========
+# ========= CLI (индексация + ручной режим) =========
 
 def main():
     print("=" * 80)
-    print("RAG Индексация документов (с обязательными ссылками на источники)")
+    print("RAG Индексация документов")
     print("=" * 80)
 
     rag = OllamaRAG(similarity_threshold=0.8)
 
-    docs_folder = input("\nПуть к папке с документами (по умолчанию './documents'): ").strip()
-    if not docs_folder:
-        docs_folder = '/Users/fehty/PycharmProjects/ai-agent/documents/'
+    docs_folder = input(
+        "\nПапка с документами (по умолчанию './documents'): ").strip() or '/Users/fehty/PycharmProjects/ai-agent/documents/'
 
     documents = load_documents_from_folder(docs_folder)
-
     if not documents:
-        print("\n❌ Документы не найдены.")
+        print("❌ Документы не найдены.")
         return
 
-    print("\n" + "=" * 80)
-    print("Начало индексации...")
-    print("=" * 80)
+    rag.add_documents(documents)
 
-    try:
-        rag.add_documents(documents)
-    except Exception as e:
-        print(f"\n❌ Ошибка при индексации: {e}")
-        return
-
-    index_path = input("\nПуть для сохранения индекса (по умолчанию 'rag_index'): ").strip()
-    if not index_path:
-        index_path = 'rag_index'
-
+    index_path = input("\nПуть для сохранения индекса (по умолчанию 'rag_index'): ").strip() or 'rag_index'
     rag.save(index_path)
-
-    print("\n" + "=" * 80)
-    print("Режим вопросов (RAG с обязательными ссылками). Введите 'exit' для выхода.")
-    print("=" * 80)
-
-    while True:
-        query = input("\nВаш вопрос: ").strip()
-        if query.lower() in ['exit', 'quit', 'выход']:
-            break
-        if not query:
-            continue
-
-        try:
-            result = rag.answer_with_rag(
-                question=query,
-                model="llama3",
-                top_k=5,
-                max_context_chars=8000,
-                min_score=rag.similarity_threshold,
-            )
-        except Exception as e:
-            print(f"\n❌ Ошибка при запросе к LLM: {e}")
-            continue
-
-        answer = result["answer"]
-        print("\n" + "-" * 80)
-        print("Ответ модели:")
-        print("-" * 80)
-        print(answer)
-
-        has_citations = re.search(r"\[\d+\]", answer) is not None
-        print("\nПроверка ссылок: содержит ли ответ [N]? ->", "ДА" if has_citations else "НЕТ")
-
-        if result["chunks"]:
-            print("\nИспользованные источники:")
-            for ch in result["chunks"]:
-                meta = ch["metadata"]
-                ref_id = ch.get("ref_id", "?")
-                print(
-                    f"  [{ref_id}] {meta['source']} "
-                    f"(чанк {meta['chunk_id'] + 1}/{meta['total_chunks']}, score={ch['score']:.4f})"
-                )
-
-    print("\n✓ Готово!")
 
 
 if __name__ == '__main__':
