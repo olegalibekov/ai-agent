@@ -95,7 +95,7 @@ def main():
         print("\nАссистент:")
         print(answer)
 
-        print("\nПроверка ссылок:", "ДА" if has_citations(answer) else "НЕТ")
+        # print("\nПроверка ссылок:", "ДА" if has_citations(answer) else "НЕТ")
 
         print("\nИсточники:")
         if result["chunks"]:
