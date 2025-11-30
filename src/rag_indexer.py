@@ -31,11 +31,14 @@ class OllamaRAG:
 
     # ========= EMBEDDINGS =========
 
-    def get_embedding(self, text: str, max_retries: int = 1) -> np.ndarray:
-        max_chars = 8000 * 4
+    def get_embedding(self, text: str, max_retries: int = 3) -> np.ndarray:
+        """Получение эмбеддинга с truncation и retry через Ollama /api/embed"""
+        max_chars = 8000 * 4  # ~8000 токенов * 4 символа на токен
         if len(text) > max_chars:
             text = text[:max_chars]
             print(f"⚠ Текст обрезан до {max_chars} символов")
+
+        last_error = None
 
         for attempt in range(max_retries):
             try:
@@ -50,13 +53,16 @@ class OllamaRAG:
                 )
 
                 if response.status_code != 200:
+                    print(f"❌ Ollama вернула ошибку {response.status_code}")
+                    print("Ответ:", response.text)
+
+                    # если есть ещё попытки — подождать и попробовать ещё раз
                     if attempt < max_retries - 1:
-                        print(f"⚠ Попытка {attempt + 1} не удалась, повтор...")
+                        print(f"⚠ Попытка {attempt + 1}/{max_retries} не удалась, повтор через 2 секунды...")
                         time.sleep(2)
                         continue
 
-                    print(f"❌ Ollama вернула ошибку {response.status_code}")
-                    print("Ответ:", response.text)
+                    # попытки кончились — бросаем HTTPError
                     response.raise_for_status()
 
                 data = response.json()
@@ -71,14 +77,17 @@ class OllamaRAG:
                 return vec
 
             except requests.exceptions.RequestException as e:
+                last_error = e
                 if attempt < max_retries - 1:
-                    print(f"⚠ Ошибка сети, попытка {attempt + 1}/{max_retries}...")
+                    print(f"⚠ Ошибка сети/соединения, попытка {attempt + 1}/{max_retries}: {e}")
                     time.sleep(2)
                 else:
                     print(f"❌ Ошибка после {max_retries} попыток: {e}")
                     raise
 
-        raise RuntimeError("Не удалось получить эмбеддинг")
+        # теоретически сюда не дойдём, но на всякий
+        raise RuntimeError(f"Не удалось получить эмбеддинг: {last_error}")
+
 
     # ========= ЧАНКИРОВАНИЕ =========
 

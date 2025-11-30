@@ -83,19 +83,28 @@ def main():
             "Ответь, учитывая историю диалога и контекст документов."
         )
 
-        result = rag.answer_with_rag(
-            question=question,
-            model="llama3",
-            top_k=5,
-            max_context_chars=8000,
-            min_score=rag.similarity_threshold,
-        )
+        try:
+            result = rag.answer_with_rag(
+                question=question,
+                model="llama3",
+                top_k=5,
+                max_context_chars=8000,
+                min_score=rag.similarity_threshold,
+            )
+        except Exception as e:
+            # здесь ЛЮБАЯ ошибка от эмбеддингов/LLM не роняет чат
+            error_text = f"❌ Ошибка при запросе к модели/эмбеддингам: {e}"
+            print("\nАссистент:")
+            print(error_text)
+
+            # при желании можем тоже сохранять в историю
+            chat_history.append({"role": "assistant", "content": error_text})
+            print("\n" + "-" * 80 + "\n")
+            continue
 
         answer = result["answer"]
         print("\nАссистент:")
         print(answer)
-
-        # print("\nПроверка ссылок:", "ДА" if has_citations(answer) else "НЕТ")
 
         print("\nИсточники:")
         if result["chunks"]:
@@ -115,4 +124,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
