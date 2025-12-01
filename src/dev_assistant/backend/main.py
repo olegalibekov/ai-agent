@@ -49,8 +49,7 @@ class RAGSystem:
 
     def __init__(self):
         print("Инициализация RAG системы...")
-        transformers.logging.set_verbosity_info()
-        self.model = SentenceTransformer('paraphrase-MiniLM-L3-v2')
+        self.model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         self.index = None
         self.documents = []
         self.metadata = []
