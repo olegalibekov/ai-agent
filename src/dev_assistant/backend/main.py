@@ -7,13 +7,11 @@ from typing import List, Dict, Optional
 
 import anthropic
 import faiss
-import transformers
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
-from transformers.utils import logging
 
 load_dotenv()
 
