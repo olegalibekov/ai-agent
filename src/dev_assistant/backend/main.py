@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
+from transformers.utils import logging
 
 load_dotenv()
 
@@ -44,7 +45,8 @@ class RAGSystem:
     
     def __init__(self):
         print("Инициализация RAG системы...")
-        self.model = SentenceTransformer('paraphrase-MiniLM-L3-v2')
+        logging.set_verbosity_info()
+        self.model = SentenceTransformer('all-mpnet-base-v2')
         self.index = None
         self.documents = []
         self.metadata = []
@@ -113,7 +115,7 @@ class RAGSystem:
         
         return docs
     
-    def chunk_text(self, text: str, chunk_size: int = 500) -> List[str]:
+    def chunk_text(self, text: str, chunk_size: int = 200) -> List[str]:
         """Разбивает текст на чанки"""
         words = text.split()
         chunks = []
@@ -273,7 +275,6 @@ async def chat(message: Message):
 
             response = client.messages.create(
                 model="claude-sonnet-4-20250514",
-                max_tokens=1000,
                 messages=[{"role": "user", "content": prompt}]
             )
             
