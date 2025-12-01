@@ -119,7 +119,7 @@ class RAGSystem:
 
         return docs
 
-    def chunk_text(self, text: str, chunk_size: int = 200) -> List[str]:
+    def chunk_text(self, text: str, chunk_size: int = 500) -> List[str]:
         """Разбивает текст на чанки"""
         words = text.split()
         chunks = []
