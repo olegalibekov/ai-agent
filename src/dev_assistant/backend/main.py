@@ -250,7 +250,7 @@ async def chat(message: Message):
 
             if not results:
                 return {
-                    "response": "❌ Индекс пуст. Сначала проиндексируйте проект"
+                    "response": "❌ Индекс пуст. Сначала проиндексируйте проект через /index"
                 }
 
             # Формируем контекст из найденных документов
@@ -303,11 +303,10 @@ async def health():
     return {
         "status": "ok",
         "indexed_documents": len(rag_system.documents),
-        "model": "all-MiniLM-L6-v2"
+        "model": "all-mpnet-base-v2"
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)

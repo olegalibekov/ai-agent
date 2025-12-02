@@ -96,6 +96,30 @@ class GitInfo:
         except Exception as e:
             return {"error": str(e)}
 
+    def get_diff(self, base: str = "HEAD~1", head: str = "HEAD") -> str:
+        """Получает diff между коммитами/ветками
+
+        Args:
+            base: Базовый коммит/ветка (по умолчанию HEAD~1 - предыдущий коммит)
+            head: Конечный коммит/ветка (по умолчанию HEAD - текущий коммит)
+
+        Returns:
+            Строка с diff в формате git diff
+        """
+        try:
+            # Проверяем существование веток/коммитов
+            try:
+                diff = self.repo.git.diff(base, head)
+            except git.exc.GitCommandError:
+                # Если base не существует (например, первый коммит),
+                # сравниваем с пустым деревом
+                empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+                diff = self.repo.git.diff(empty_tree, head)
+
+            return diff
+        except Exception as e:
+            return f"Error: {str(e)}"
+
 
 @app.post("/git/branch")
 async def get_branch(request: GitRequest):
@@ -145,6 +169,22 @@ async def get_full_info(request: GitRequest):
             "recent_commits": git_info.get_recent_commits(limit=5),
             "remotes": git_info.get_remote_info()
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/git/diff")
+async def get_diff(request: GitRequest):
+    """Получает diff последнего коммита (HEAD~1..HEAD)
+
+    Для получения diff между другими коммитами/ветками,
+    можно расширить GitRequest добавив поля base и head
+    """
+    try:
+        git_info = GitInfo(request.repo_path)
+        # По умолчанию показываем diff последнего коммита
+        diff = git_info.get_diff(base="HEAD~1", head="HEAD")
+        return {"diff": diff}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
