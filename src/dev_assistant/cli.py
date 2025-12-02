@@ -149,8 +149,6 @@ class DevAssistantCLI:
                 json={"repo_path": repo_path}
             )
 
-
-
             if diff_resp.status_code != 200:
                 print(f"✗ Ошибка получения diff: {diff_resp.text}")
                 return None
@@ -159,8 +157,6 @@ class DevAssistantCLI:
             if not diff:
                 print("✓ Нет изменений для ревью")
                 return None
-
-            print(f"\n💬 diff {diff}")
 
             # 2. Получаем контекст через RAG (используем уже проиндексированный проект)
             print("📚 Получаю контекст проекта через RAG...")
@@ -267,7 +263,6 @@ class DevAssistantCLI:
         print(f"\n💬 {repo_owner}")
         print(f"\n💬 {repo_name}")
         print(f"\n💬 {pr_number}")
-        print(f"\n💬 review_text {review_text}")
 
         github_api_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{pr_number}/comments"
 
