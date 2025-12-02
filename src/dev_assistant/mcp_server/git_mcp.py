@@ -18,40 +18,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 class GitRequest(BaseModel):
     repo_path: str
 
-
 class GitInfo:
     """Класс для работы с Git репозиторием"""
-
+    
     def __init__(self, repo_path: str):
         self.repo_path = Path(repo_path)
         self.repo = None
         self._init_repo()
-
+    
     def _init_repo(self):
         """Инициализирует Git репозиторий"""
         try:
             self.repo = git.Repo(self.repo_path)
         except git.InvalidGitRepositoryError:
             raise ValueError(f"Не найден Git репозиторий в {self.repo_path}")
-
+    
     def get_current_branch(self) -> str:
         """Получает имя текущей ветки"""
         try:
             return self.repo.active_branch.name
         except Exception as e:
             return f"Error: {str(e)}"
-
+    
     def get_branches(self) -> list:
         """Получает список всех веток"""
         try:
             return [branch.name for branch in self.repo.branches]
         except Exception as e:
             return []
-
+    
     def get_status(self) -> dict:
         """Получает статус репозитория"""
         try:
@@ -64,7 +62,7 @@ class GitInfo:
             }
         except Exception as e:
             return {"error": str(e)}
-
+    
     def get_recent_commits(self, limit: int = 5) -> list:
         """Получает последние коммиты"""
         try:
@@ -79,13 +77,13 @@ class GitInfo:
             return commits
         except Exception as e:
             return []
-
+    
     def get_remote_info(self) -> dict:
         """Получает информацию о remote репозитории"""
         try:
             if not self.repo.remotes:
                 return {"remotes": []}
-
+            
             remotes = []
             for remote in self.repo.remotes:
                 remotes.append({
@@ -95,14 +93,14 @@ class GitInfo:
             return {"remotes": remotes}
         except Exception as e:
             return {"error": str(e)}
-
+    
     def get_diff(self, base: str = "HEAD~1", head: str = "HEAD") -> str:
         """Получает diff между коммитами/ветками
-
+        
         Args:
             base: Базовый коммит/ветка (по умолчанию HEAD~1 - предыдущий коммит)
             head: Конечный коммит/ветка (по умолчанию HEAD - текущий коммит)
-
+        
         Returns:
             Строка с diff в формате git diff
         """
@@ -111,15 +109,14 @@ class GitInfo:
             try:
                 diff = self.repo.git.diff(base, head)
             except git.exc.GitCommandError:
-                # Если base не существует (например, первый коммит),
+                # Если base не существует (например, первый коммит), 
                 # сравниваем с пустым деревом
                 empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
                 diff = self.repo.git.diff(empty_tree, head)
-
+            
             return diff
         except Exception as e:
             return f"Error: {str(e)}"
-
 
 @app.post("/git/branch")
 async def get_branch(request: GitRequest):
@@ -134,7 +131,6 @@ async def get_branch(request: GitRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/git/status")
 async def get_status(request: GitRequest):
     """Получает полный статус репозитория"""
@@ -145,7 +141,6 @@ async def get_status(request: GitRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/git/commits")
 async def get_commits(request: GitRequest):
     """Получает последние коммиты"""
@@ -155,7 +150,6 @@ async def get_commits(request: GitRequest):
         return {"commits": commits}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/git/info")
 async def get_full_info(request: GitRequest):
@@ -172,11 +166,10 @@ async def get_full_info(request: GitRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/git/diff")
 async def get_diff(request: GitRequest):
     """Получает diff последнего коммита (HEAD~1..HEAD)
-
+    
     Для получения diff между другими коммитами/ветками,
     можно расширить GitRequest добавив поля base и head
     """
@@ -188,14 +181,11 @@ async def get_diff(request: GitRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/health")
 async def health():
     """Проверка здоровья MCP сервера"""
     return {"status": "ok", "service": "MCP Git Server"}
 
-
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8001)

@@ -47,7 +47,7 @@ class RAGSystem:
 
     def __init__(self):
         print("Инициализация RAG системы...")
-        self.model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        self.model = SentenceTransformer('all-mpnet-base-v2')
         self.index = None
         self.documents = []
         self.metadata = []
