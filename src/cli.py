@@ -49,6 +49,7 @@ class SupportCLI:
             print("📊 Загружаю контекст пользователя...")
             user_resp = requests.get(f"{self.crm_url}/crm/user/{user_id}")
             
+            user_context = None
             if user_resp.status_code == 200:
                 user = user_resp.json()
                 print(f"  ✓ {user['name']} ({user['email']})")
@@ -60,6 +61,7 @@ class SupportCLI:
                     params={"status": "open"}
                 )
                 
+                open_tickets = []
                 if tickets_resp.status_code == 200:
                     tickets_data = tickets_resp.json()
                     open_tickets = tickets_data['tickets']
@@ -67,15 +69,31 @@ class SupportCLI:
                         print(f"    Открытые тикеты: {len(open_tickets)}")
                         for ticket in open_tickets[:3]:
                             print(f"      - {ticket['id']}: {ticket['subject']}")
+                
+                # Формируем полный контекст для Backend
+                user_context = {
+                    'user': user,
+                    'tickets': open_tickets
+                }
             else:
                 print(f"  ⚠️ Пользователь не найден, продолжаю без контекста")
                 user = None
             
-            # 2. Задаем вопрос в RAG
+            # 2. Задаем вопрос в RAG с полным контекстом
             print(f"\n📚 Ищу ответ в базе знаний...")
+            
+            request_data = {
+                "query": question,
+                "user_id": user_id
+            }
+            
+            # Добавляем контекст если есть
+            if user_context:
+                request_data["user_context"] = user_context
+            
             answer_resp = requests.post(
                 f"{self.backend_url}/ask",
-                json={"query": question, "user_id": user_id},
+                json=request_data,
                 timeout=60
             )
             

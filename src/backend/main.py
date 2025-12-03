@@ -34,6 +34,7 @@ app.add_middleware(
 class QueryRequest(BaseModel):
     query: str
     user_id: Optional[str] = None
+    user_context: Optional[Dict] = None
 
 class IndexRequest(BaseModel):
     kb_path: str
@@ -187,13 +188,34 @@ class SupportRAG:
         # Добавляем контекст пользователя
         user_info = ""
         if user_context:
+            user_data = user_context.get('user', {})
+            tickets = user_context.get('tickets', [])
+            
+            # Информация о пользователе
+            storage_limit = user_data.get('storage_limit_gb')
+            if storage_limit:
+                storage_info = f"{user_data.get('storage_used_gb', 0)} GB из {storage_limit} GB"
+            else:
+                storage_info = f"{user_data.get('storage_used_gb', 0)} GB (безлимитно)"
+            
             user_info = f"""
 **Информация о пользователе:**
-- Email: {user_context.get('email', 'N/A')}
-- План: {user_context.get('plan', 'N/A')}
-- Статус: {user_context.get('status', 'N/A')}
-- Использовано места: {user_context.get('storage_used_gb', 0)} GB из {user_context.get('storage_limit_gb', 'unlimited')} GB
+- Имя: {user_data.get('name', 'N/A')}
+- Email: {user_data.get('email', 'N/A')}
+- План: {user_data.get('plan', 'N/A')}
+- Статус аккаунта: {user_data.get('status', 'N/A')}
+- Хранилище: {storage_info}
+- 2FA: {'включена' if user_data.get('2fa_enabled') else 'отключена'}
 """
+            
+            # Открытые тикеты
+            if tickets:
+                user_info += f"\n**Открытые тикеты пользователя ({len(tickets)}):**\n"
+                for ticket in tickets[:3]:  # Показываем до 3 тикетов
+                    user_info += f"- Тикет #{ticket['id']}: {ticket['subject']}\n"
+                    user_info += f"  Приоритет: {ticket['priority']}, Категория: {ticket['category']}\n"
+                    if ticket.get('description'):
+                        user_info += f"  Описание: {ticket['description'][:150]}...\n"
         
         # Формируем промпт
         prompt = f"""Ты - ассистент службы поддержки CloudDocs (облачное хранилище).
@@ -206,17 +228,18 @@ class SupportRAG:
 {context_text}
 
 **Инструкции:**
-1. Ответь на вопрос пользователя кратко и понятно
-2. Используй информацию из базы знаний
+1. ОБЯЗАТЕЛЬНО упомяни если у пользователя есть открытые тикеты по этой теме
+2. Учитывай план пользователя (Free/Premium/Enterprise) при ответе
 3. Если это технический вопрос - дай пошаговое решение
-4. Если нужно - укажи на релевантные разделы документации
+4. Персонализируй ответ на основе статуса аккаунта
 5. Будь дружелюбным и профессиональным
-6. Учитывай план пользователя при ответе
+6. Используй только релевантную информацию из базы знаний
 
 Формат ответа:
+- Упомяни открытые тикеты (если есть)
 - Прямой ответ на вопрос
 - Пошаговое решение (если применимо)
-- Ссылки на документацию (если применимо)"""
+- Рекомендации с учетом плана пользователя"""
 
         try:
             client = anthropic.Anthropic(api_key=self.anthropic_api_key)
@@ -295,12 +318,8 @@ async def ask_question(request: QueryRequest):
                 detail="База знаний не проиндексирована. Используйте /index"
             )
         
-        # Получаем контекст пользователя (если указан user_id)
-        user_context = None
-        if request.user_id:
-            # Здесь можно загрузить из CRM через MCP
-            # Пока просто заглушка
-            pass
+        # Используем переданный контекст пользователя
+        user_context = request.user_context
         
         # Ищем релевантные документы
         relevant_docs = rag_system.search(request.query, top_k=3)
@@ -312,7 +331,7 @@ async def ask_question(request: QueryRequest):
                 "context": []
             }
         
-        # Генерируем ответ
+        # Генерируем ответ с контекстом пользователя
         answer = rag_system.generate_answer(
             request.query, 
             relevant_docs,
