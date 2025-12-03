@@ -1,0 +1,169 @@
+{
+  "tickets": {
+    "ticket_101": {
+      "id": "ticket_101",
+      "user_id": "user_001",
+      "subject": "Не работает синхронизация файлов",
+      "description": "Уже 2 дня файлы не синхронизируются между устройствами. Пробовал перезапустить приложение, не помогло.",
+      "status": "open",
+      "priority": "high",
+      "created": "2024-12-03T10:30:00Z",
+      "updated": "2024-12-03T15:45:00Z",
+      "category": "sync",
+      "assigned_to": "support_team",
+      "tags": ["sync", "troubleshooting"],
+      "history": [
+        {
+          "timestamp": "2024-12-03T10:30:00Z",
+          "action": "created",
+          "by": "user_001"
+        },
+        {
+          "timestamp": "2024-12-03T15:45:00Z",
+          "action": "updated_priority",
+          "by": "support_agent",
+          "details": "Changed priority from medium to high"
+        }
+      ]
+    },
+    "ticket_102": {
+      "id": "ticket_102",
+      "user_id": "user_003",
+      "subject": "Как увеличить место хранения?",
+      "description": "У меня заканчивается место на Free плане. Хочу узнать про Premium план и как его оплатить.",
+      "status": "resolved",
+      "priority": "low",
+      "created": "2024-12-01T09:15:00Z",
+      "updated": "2024-12-01T14:20:00Z",
+      "resolved": "2024-12-01T14:20:00Z",
+      "category": "billing",
+      "assigned_to": "billing_team",
+      "tags": ["upgrade", "billing"],
+      "resolution": "Explained Premium plan benefits. User upgraded to Premium successfully.",
+      "history": [
+        {
+          "timestamp": "2024-12-01T09:15:00Z",
+          "action": "created",
+          "by": "user_003"
+        },
+        {
+          "timestamp": "2024-12-01T14:20:00Z",
+          "action": "resolved",
+          "by": "support_agent",
+          "details": "User upgraded to Premium"
+        }
+      ]
+    },
+    "ticket_103": {
+      "id": "ticket_103",
+      "user_id": "user_004",
+      "subject": "Ошибка оплаты - карта отклонена",
+      "description": "Получаю ошибку 'Card Declined' при попытке оплатить подписку. Карта рабочая, на ней есть деньги.",
+      "status": "in_progress",
+      "priority": "high",
+      "created": "2024-11-28T16:45:00Z",
+      "updated": "2024-12-04T11:30:00Z",
+      "category": "payment",
+      "assigned_to": "billing_team",
+      "tags": ["payment_failed", "card_declined", "urgent"],
+      "history": [
+        {
+          "timestamp": "2024-11-28T16:45:00Z",
+          "action": "created",
+          "by": "user_004"
+        },
+        {
+          "timestamp": "2024-11-29T10:00:00Z",
+          "action": "status_changed",
+          "by": "billing_agent",
+          "details": "Started investigation"
+        },
+        {
+          "timestamp": "2024-12-04T11:30:00Z",
+          "action": "comment_added",
+          "by": "billing_agent",
+          "details": "Contacted payment provider, waiting for response"
+        }
+      ]
+    },
+    "ticket_104": {
+      "id": "ticket_104",
+      "user_id": "user_001",
+      "subject": "Ошибка 401 при попытке входа",
+      "description": "После смены пароля получаю ошибку 401 Unauthorized. Пробовал очистить кэш, не помогло.",
+      "status": "open",
+      "priority": "high",
+      "created": "2024-12-04T08:20:00Z",
+      "updated": "2024-12-04T08:20:00Z",
+      "category": "authentication",
+      "assigned_to": "tech_support",
+      "tags": ["401", "login", "auth"]
+    },
+    "ticket_105": {
+      "id": "ticket_105",
+      "user_id": "user_002",
+      "subject": "Запрос API доступа для интеграции",
+      "description": "Нужно настроить интеграцию CloudDocs с нашей CRM системой. Требуется API ключ и документация.",
+      "status": "in_progress",
+      "priority": "medium",
+      "created": "2024-12-02T13:00:00Z",
+      "updated": "2024-12-03T16:00:00Z",
+      "category": "api",
+      "assigned_to": "enterprise_support",
+      "tags": ["api", "integration", "enterprise"],
+      "history": [
+        {
+          "timestamp": "2024-12-02T13:00:00Z",
+          "action": "created",
+          "by": "user_002"
+        },
+        {
+          "timestamp": "2024-12-03T16:00:00Z",
+          "action": "status_changed",
+          "by": "enterprise_agent",
+          "details": "Generating API credentials"
+        }
+      ]
+    },
+    "ticket_106": {
+      "id": "ticket_106",
+      "user_id": "user_005",
+      "subject": "Как поделиться большим файлом?",
+      "description": "Нужно отправить клиенту файл на 200 MB. Как это лучше сделать через CloudDocs?",
+      "status": "resolved",
+      "priority": "low",
+      "created": "2024-11-30T11:20:00Z",
+      "updated": "2024-11-30T12:05:00Z",
+      "resolved": "2024-11-30T12:05:00Z",
+      "category": "how_to",
+      "assigned_to": "support_team",
+      "tags": ["sharing", "files"],
+      "resolution": "Explained file sharing via public link. User successfully shared file.",
+      "history": [
+        {
+          "timestamp": "2024-11-30T11:20:00Z",
+          "action": "created",
+          "by": "user_005"
+        },
+        {
+          "timestamp": "2024-11-30T12:05:00Z",
+          "action": "resolved",
+          "by": "support_agent"
+        }
+      ]
+    },
+    "ticket_107": {
+      "id": "ticket_107",
+      "user_id": "user_003",
+      "subject": "Не могу загрузить файл - превышен лимит",
+      "description": "Пытаюсь загрузить презентацию 60 MB, но получаю ошибку о превышении лимита размера файла.",
+      "status": "open",
+      "priority": "medium",
+      "created": "2024-12-04T14:10:00Z",
+      "updated": "2024-12-04T14:10:00Z",
+      "category": "storage",
+      "assigned_to": "support_team",
+      "tags": ["upload", "file_size", "free_plan"]
+    }
+  }
+}
