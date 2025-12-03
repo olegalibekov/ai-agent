@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
-
+import faiss
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,8 +21,11 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan events для FastAPI"""
+    # Startup
     rag_system.initialize()
     yield
+    # Shutdown (если нужно что-то делать при остановке)
+
 
 app = FastAPI(title="Support Assistant Backend", lifespan=lifespan)
 
