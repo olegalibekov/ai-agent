@@ -165,7 +165,7 @@ class TeamAssistant:
         try:
             task_data = {
                 "title": title,
-                "description": f"Создано через Team Assistant",
+                "description": f"Создано через Team Assistant CLI",
                 "priority": priority,
                 "assignee": assignee,
                 "estimate_hours": estimate,
@@ -184,10 +184,114 @@ class TeamAssistant:
                 print(f"   Приоритет: {task['priority']}")
                 print(f"   Назначена: {task.get('assignee', 'никому')}")
                 print(f"   Спринт: {task.get('sprint', 'не назначен')}")
+                if estimate:
+                    print(f"   Оценка: {estimate} часов")
+                
+                # Показываем прямой API запрос
+                print(f"\n💡 API запрос:")
+                print(f"   curl -X POST http://localhost:8001/tasks \\")
+                print(f"     -H 'Content-Type: application/json' \\")
+                print(f"     -d '{json.dumps(task_data, ensure_ascii=False)}'")
             else:
                 print(f"✗ Ошибка: {resp.text}")
         except Exception as e:
             print(f"✗ Ошибка: {e}")
+    
+    def task_create_interactive(self):
+        """Интерактивное создание задачи"""
+        print("📝 СОЗДАНИЕ НОВОЙ ЗАДАЧИ\n")
+        print("="*60)
+        
+        # Название
+        title = input("📌 Название задачи: ")
+        if not title:
+            print("✗ Название обязательно")
+            return
+        
+        # Описание
+        description = input("📄 Описание (Enter для пропуска): ")
+        if not description:
+            description = f"Создано через Team Assistant"
+        
+        # Приоритет
+        print("\n⚡ Приоритет:")
+        print("  1. Low")
+        print("  2. Medium (по умолчанию)")
+        print("  3. High")
+        priority_choice = input("Выберите (1-3): ").strip()
+        priority_map = {'1': 'low', '2': 'medium', '3': 'high'}
+        priority = priority_map.get(priority_choice, 'medium')
+        
+        # Исполнитель
+        print("\n👤 Исполнитель:")
+        print("  1. john_doe (John Doe - Backend Lead)")
+        print("  2. jane_smith (Jane Smith - Frontend)")
+        print("  3. bob_wilson (Bob Wilson - DevOps)")
+        print("  4. alice_brown (Alice Brown - QA)")
+        print("  5. charlie_davis (Charlie Davis - PM)")
+        print("  0. Не назначать")
+        assignee_choice = input("Выберите (0-5): ").strip()
+        assignee_map = {
+            '1': 'john_doe',
+            '2': 'jane_smith', 
+            '3': 'bob_wilson',
+            '4': 'alice_brown',
+            '5': 'charlie_davis'
+        }
+        assignee = assignee_map.get(assignee_choice)
+        
+        # Оценка
+        estimate_input = input("\n⏱️  Оценка в часах (Enter для пропуска): ").strip()
+        estimate = int(estimate_input) if estimate_input.isdigit() else None
+        
+        # Метки
+        labels_input = input("\n🏷️  Метки через запятую (Enter для пропуска): ").strip()
+        labels = [l.strip() for l in labels_input.split(',')] if labels_input else []
+        
+        # Подтверждение
+        print("\n" + "="*60)
+        print("📋 PREVIEW:")
+        print(f"   Название: {title}")
+        print(f"   Описание: {description}")
+        print(f"   Приоритет: {priority}")
+        print(f"   Назначена: {assignee or 'никому'}")
+        if estimate:
+            print(f"   Оценка: {estimate} часов")
+        if labels:
+            print(f"   Метки: {', '.join(labels)}")
+        print("="*60)
+        
+        confirm = input("\n✅ Создать задачу? (y/n): ")
+        if confirm.lower() != 'y':
+            print("❌ Отменено")
+            return
+        
+        # Создаём
+        try:
+            task_data = {
+                "title": title,
+                "description": description,
+                "priority": priority,
+                "assignee": assignee,
+                "estimate_hours": estimate,
+                "labels": labels
+            }
+            
+            resp = requests.post(f"{self.mcp_url}/tasks", json=task_data)
+            
+            if resp.status_code == 200:
+                result = resp.json()
+                task = result['task']
+                
+                print(f"\n✅ Задача создана: {task['id']}")
+                print(f"\n📊 Детали:")
+                print(f"   ID: {task['id']}")
+                print(f"   Спринт: {task.get('sprint', 'не назначен')}")
+                print(f"   Статус: {task['status']}")
+            else:
+                print(f"\n✗ Ошибка: {resp.text}")
+        except Exception as e:
+            print(f"\n✗ Ошибка: {e}")
     
     def task_update(self, task_id: str, status: Optional[str] = None,
                    assignee: Optional[str] = None, priority: Optional[str] = None):
