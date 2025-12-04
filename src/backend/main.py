@@ -1,33 +1,281 @@
 """
-Support Assistant Backend
-RAG система для поддержки пользователей CloudDocs
+Team Assistant Backend
+RAG система для знаний о проекте
 """
 import os
 from pathlib import Path
 from typing import List, Dict, Optional
+from contextlib import asynccontextmanager
 import anthropic
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 import faiss
+import numpy as np
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from contextlib import asynccontextmanager
+# ============================================================================
+# Модели данных
+# ============================================================================
 
+class QueryRequest(BaseModel):
+    query: str
+    context: Optional[Dict] = None
+
+class IndexRequest(BaseModel):
+    kb_path: str
+
+# ============================================================================
+# RAG система
+# ============================================================================
+
+class TeamRAG:
+    def __init__(self):
+        self.model = None
+        self.index = None
+        self.documents = []
+        self.embeddings = None
+        self.anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+        
+        if not self.anthropic_api_key:
+            print("⚠️ ANTHROPIC_API_KEY не установлен")
+    
+    def initialize(self):
+        """Инициализация модели"""
+        print("🔧 Инициализация RAG системы...")
+        self.model = SentenceTransformer('all-mpnet-base-v2')
+        print("✓ Модель загружена")
+    
+    def load_knowledge_base(self, kb_path: str) -> List[Dict]:
+        """Загружает базу знаний"""
+        kb_path = Path(kb_path)
+        documents = []
+        
+        print(f"📚 Загружаю базу знаний из {kb_path}...")
+        
+        # Загружаем все файлы
+        for file_path in kb_path.rglob("*"):
+            if file_path.is_file() and file_path.suffix in ['.md', '.py', '.txt']:
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Определяем тип файла
+                    file_type = "code" if file_path.suffix == '.py' else "docs"
+                    
+                    # Разбиваем на чанки
+                    chunks = self._split_content(content, str(file_path.name), file_type)
+                    documents.extend(chunks)
+                    
+                    print(f"  ✓ {file_path.relative_to(kb_path)}: {len(chunks)} чанков")
+                except Exception as e:
+                    print(f"  ✗ Ошибка {file_path.name}: {e}")
+        
+        print(f"✓ Загружено {len(documents)} чанков")
+        return documents
+    
+    def _split_content(self, content: str, filename: str, file_type: str) -> List[Dict]:
+        """Разбивает контент на чанки"""
+        chunks = []
+        
+        if file_type == "code":
+            # Разбиваем по функциям/классам
+            lines = content.split('\n')
+            current_chunk = []
+            current_name = filename
+            
+            for line in lines:
+                if line.startswith('def ') or line.startswith('class '):
+                    # Сохраняем предыдущий чанк
+                    if current_chunk:
+                        chunk_text = '\n'.join(current_chunk).strip()
+                        if len(chunk_text) > 50:
+                            chunks.append({
+                                'text': chunk_text,
+                                'source': filename,
+                                'type': 'code',
+                                'name': current_name
+                            })
+                    
+                    # Новый чанк
+                    current_name = line.split('(')[0].replace('def ', '').replace('class ', '').strip()
+                    current_chunk = [line]
+                else:
+                    current_chunk.append(line)
+            
+            # Последний чанк
+            if current_chunk:
+                chunk_text = '\n'.join(current_chunk).strip()
+                if len(chunk_text) > 50:
+                    chunks.append({
+                        'text': chunk_text,
+                        'source': filename,
+                        'type': 'code',
+                        'name': current_name
+                    })
+        else:
+            # Разбиваем по заголовкам
+            lines = content.split('\n')
+            current_chunk = []
+            current_header = filename
+            
+            for line in lines:
+                if line.startswith('#'):
+                    if current_chunk:
+                        chunk_text = '\n'.join(current_chunk).strip()
+                        if len(chunk_text) > 50:
+                            chunks.append({
+                                'text': chunk_text,
+                                'source': filename,
+                                'type': 'docs',
+                                'header': current_header
+                            })
+                    
+                    current_header = line.strip('#').strip()
+                    current_chunk = [line]
+                else:
+                    current_chunk.append(line)
+            
+            if current_chunk:
+                chunk_text = '\n'.join(current_chunk).strip()
+                if len(chunk_text) > 50:
+                    chunks.append({
+                        'text': chunk_text,
+                        'source': filename,
+                        'type': 'docs',
+                        'header': current_header
+                    })
+        
+        return chunks
+    
+    def create_index(self, documents: List[Dict]):
+        """Создает FAISS индекс"""
+        print("🔨 Создаю FAISS индекс...")
+        
+        self.documents = documents
+        texts = [doc['text'] for doc in documents]
+        
+        # Создаем embeddings
+        self.embeddings = self.model.encode(texts, show_progress_bar=True)
+        
+        # Создаем FAISS индекс
+        dimension = self.embeddings.shape[1]
+        self.index = faiss.IndexFlatL2(dimension)
+        self.index.add(self.embeddings.astype('float32'))
+        
+        print(f"✓ Индекс создан: {len(documents)} документов")
+    
+    def search(self, query: str, top_k: int = 5) -> List[Dict]:
+        """Поиск релевантных документов"""
+        if self.index is None:
+            return []
+        
+        # Создаем embedding запроса
+        query_embedding = self.model.encode([query])
+        
+        # Поиск в FAISS
+        distances, indices = self.index.search(
+            query_embedding.astype('float32'), 
+            top_k
+        )
+        
+        results = []
+        for idx, distance in zip(indices[0], distances[0]):
+            if idx < len(self.documents):
+                doc = self.documents[idx]
+                results.append({
+                    'text': doc['text'],
+                    'source': doc['source'],
+                    'type': doc['type'],
+                    'name': doc.get('name') or doc.get('header', ''),
+                    'score': float(distance)
+                })
+        
+        return results
+    
+    def generate_answer(self, query: str, context_docs: List[Dict], 
+                       project_context: Optional[Dict] = None) -> str:
+        """Генерирует ответ с помощью Claude"""
+        if not self.anthropic_api_key:
+            # Возвращаем сырой контекст
+            context_text = "\n\n---\n\n".join([
+                f"**{doc['name']}** ({doc['source']})\n{doc['text'][:300]}..."
+                for doc in context_docs
+            ])
+            return f"📚 Найденная информация:\n\n{context_text}"
+        
+        # Формируем контекст из документов
+        context_text = "\n\n".join([
+            f"# {doc['name']} ({doc['type']})\n{doc['text']}"
+            for doc in context_docs
+        ])
+        
+        # Добавляем контекст проекта
+        project_info = ""
+        if project_context:
+            sprint = project_context.get('sprint', {})
+            blockers = project_context.get('blockers', {})
+            
+            project_info = f"""
+**Текущий контекст проекта:**
+- Спринт: {sprint.get('name', 'N/A')}
+- Прогресс: {sprint.get('completion_percent', 0)}%
+- Заблокированных задач: {blockers.get('blocked_tasks', 0)}
+- Блокеров релиза: {blockers.get('release_blockers', 0)}
+"""
+        
+        # Промпт
+        prompt = f"""Ты - ассистент команды разработки проекта CloudDocs.
+
+{project_info}
+
+**Вопрос:** {query}
+
+**База знаний проекта:**
+{context_text}
+
+**Инструкции:**
+1. Отвечай на основе предоставленной базы знаний
+2. Если это вопрос о коде - дай конкретные примеры из кодовой базы
+3. Если это вопрос о задачах - учитывай текущий контекст проекта
+4. Будь конкретным и практичным
+5. Если нужно - ссылайся на конкретные файлы и функции
+
+Формат ответа:
+- Прямой ответ на вопрос
+- Конкретные примеры из кода/документации
+- Рекомендации (если применимо)"""
+
+        try:
+            client = anthropic.Anthropic(api_key=self.anthropic_api_key)
+            message = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=2000,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            return message.content[0].text
+        except Exception as e:
+            print(f"Ошибка Claude API: {e}")
+            return f"Ошибка генерации ответа: {e}"
+
+# ============================================================================
+# FastAPI App
+# ============================================================================
+
+rag_system = TeamRAG()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan events для FastAPI"""
-    # Startup
+    """Lifespan events"""
     rag_system.initialize()
     yield
-    # Shutdown (если нужно что-то делать при остановке)
 
-
-app = FastAPI(title="Support Assistant Backend", lifespan=lifespan)
+app = FastAPI(title="Team Assistant Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,258 +285,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ============================================================================
-# Модели данных
-# ============================================================================
-
-class QueryRequest(BaseModel):
-    query: str
-    user_id: Optional[str] = None
-    user_context: Optional[Dict] = None
-
-
-class IndexRequest(BaseModel):
-    kb_path: str
-
-
-# ============================================================================
-# RAG система
-# ============================================================================
-
-class SupportRAG:
-    def __init__(self):
-        self.model = None
-        self.index = None
-        self.documents = []
-        self.embeddings = None
-        self.anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
-
-        if not self.anthropic_api_key:
-            print("⚠️ ANTHROPIC_API_KEY не установлен. AI ответы не будут работать.")
-
-    def initialize(self):
-        """Инициализация модели embeddings"""
-        print("🔧 Инициализация RAG системы...")
-        self.model = SentenceTransformer('all-mpnet-base-v2')
-        print("✓ Модель загружена")
-
-    def load_knowledge_base(self, kb_path: str) -> List[str]:
-        """Загружает базу знаний из markdown файлов"""
-        kb_path = Path(kb_path)
-        documents = []
-        file_paths = []
-
-        print(f"📚 Загружаю базу знаний из {kb_path}...")
-
-        # Рекурсивно загружаем все .md файлы
-        for md_file in kb_path.rglob("*.md"):
-            try:
-                with open(md_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-
-                # Разбиваем на чанки по заголовкам
-                chunks = self._split_by_headers(content, str(md_file.name))
-                documents.extend(chunks)
-                file_paths.append(str(md_file.relative_to(kb_path)))
-
-                print(f"  ✓ {md_file.name}: {len(chunks)} чанков")
-            except Exception as e:
-                print(f"  ✗ Ошибка загрузки {md_file.name}: {e}")
-
-        print(f"✓ Загружено {len(documents)} чанков из {len(file_paths)} файлов")
-        return documents
-
-    def _split_by_headers(self, content: str, filename: str) -> List[Dict[str, str]]:
-        """Разбивает документ на чанки по заголовкам"""
-        chunks = []
-        lines = content.split('\n')
-
-        current_chunk = []
-        current_header = filename
-
-        for line in lines:
-            if line.startswith('#'):
-                # Сохраняем предыдущий чанк
-                if current_chunk:
-                    chunk_text = '\n'.join(current_chunk).strip()
-                    if len(chunk_text) > 50:  # Минимальная длина чанка
-                        chunks.append({
-                            'text': chunk_text,
-                            'source': filename,
-                            'header': current_header
-                        })
-
-                # Начинаем новый чанк
-                current_header = line.strip('#').strip()
-                current_chunk = [line]
-            else:
-                current_chunk.append(line)
-
-        # Добавляем последний чанк
-        if current_chunk:
-            chunk_text = '\n'.join(current_chunk).strip()
-            if len(chunk_text) > 50:
-                chunks.append({
-                    'text': chunk_text,
-                    'source': filename,
-                    'header': current_header
-                })
-
-        return chunks
-
-    def create_index(self, documents: List[Dict[str, str]]):
-        """Создает FAISS индекс"""
-        print("🔨 Создаю FAISS индекс...")
-
-        self.documents = documents
-        texts = [doc['text'] for doc in documents]
-
-        # Создаем embeddings
-        self.embeddings = self.model.encode(texts, show_progress_bar=True)
-
-        # Создаем FAISS индекс
-        dimension = self.embeddings.shape[1]
-        self.index = faiss.IndexFlatL2(dimension)
-        self.index.add(self.embeddings.astype('float32'))
-
-        print(f"✓ Индекс создан: {len(documents)} документов")
-
-    def search(self, query: str, top_k: int = 3) -> List[Dict]:
-        """Поиск релевантных документов"""
-        if self.index is None:
-            return []
-
-        # Создаем embedding запроса
-        query_embedding = self.model.encode([query])
-
-        # Поиск в FAISS
-        distances, indices = self.index.search(
-            query_embedding.astype('float32'),
-            top_k
-        )
-
-        results = []
-        for idx, distance in zip(indices[0], distances[0]):
-            if idx < len(self.documents):
-                doc = self.documents[idx]
-                results.append({
-                    'text': doc['text'],
-                    'source': doc['source'],
-                    'header': doc['header'],
-                    'score': float(distance)
-                })
-
-        return results
-
-    def generate_answer(self, query: str, context: List[Dict],
-                        user_context: Optional[Dict] = None) -> str:
-        """Генерирует ответ с помощью Claude"""
-        if not self.anthropic_api_key:
-            # Возвращаем сырой контекст если нет API ключа
-            context_text = "\n\n---\n\n".join([
-                f"**{doc['header']}** ({doc['source']})\n{doc['text'][:300]}..."
-                for doc in context
-            ])
-            return f"📚 Найденная информация:\n\n{context_text}"
-
-        # Формируем контекст
-        context_text = "\n\n".join([
-            f"# {doc['header']}\n{doc['text']}"
-            for doc in context
-        ])
-
-        # Добавляем контекст пользователя
-        user_info = ""
-        if user_context:
-            user_data = user_context.get('user', {})
-            tickets = user_context.get('tickets', [])
-
-            # Информация о пользователе
-            storage_limit = user_data.get('storage_limit_gb')
-            if storage_limit:
-                storage_info = f"{user_data.get('storage_used_gb', 0)} GB из {storage_limit} GB"
-            else:
-                storage_info = f"{user_data.get('storage_used_gb', 0)} GB (безлимитно)"
-
-            user_info = f"""
-**Информация о пользователе:**
-- Имя: {user_data.get('name', 'N/A')}
-- Email: {user_data.get('email', 'N/A')}
-- План: {user_data.get('plan', 'N/A')}
-- Статус аккаунта: {user_data.get('status', 'N/A')}
-- Хранилище: {storage_info}
-- 2FA: {'включена' if user_data.get('2fa_enabled') else 'отключена'}
-"""
-
-            # Открытые тикеты
-            if tickets:
-                user_info += f"\n**Открытые тикеты пользователя ({len(tickets)}):**\n"
-                for ticket in tickets[:3]:  # Показываем до 3 тикетов
-                    user_info += f"- Тикет #{ticket['id']}: {ticket['subject']}\n"
-                    user_info += f"  Приоритет: {ticket['priority']}, Категория: {ticket['category']}\n"
-                    if ticket.get('description'):
-                        user_info += f"  Описание: {ticket['description'][:150]}...\n"
-
-        # Формируем промпт
-        prompt = f"""Ты - ассистент службы поддержки CloudDocs (облачное хранилище).
-
-{user_info}
-
-**Вопрос пользователя:** {query}
-
-**База знаний:**
-{context_text}
-
-**Инструкции:**
-1. ОБЯЗАТЕЛЬНО упомяни если у пользователя есть открытые тикеты по этой теме
-2. Учитывай план пользователя (Free/Premium/Enterprise) при ответе
-3. Если это технический вопрос - дай пошаговое решение
-4. Персонализируй ответ на основе статуса аккаунта
-5. Будь дружелюбным и профессиональным
-6. Используй только релевантную информацию из базы знаний
-
-Формат ответа:
-- Упомяни открытые тикеты (если есть)
-- Прямой ответ на вопрос
-- Пошаговое решение (если применимо)
-- Рекомендации с учетом плана пользователя"""
-
-        try:
-            client = anthropic.Anthropic(api_key=self.anthropic_api_key)
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1500,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            return message.content[0].text
-        except Exception as e:
-            print(f"Ошибка Claude API: {e}")
-            return f"Ошибка генерации ответа: {e}"
-
-
-# ============================================================================
-# Глобальная инстанция RAG
-# ============================================================================
-
-rag_system = SupportRAG()
-
-
 # ============================================================================
 # API Endpoints
 # ============================================================================
 
 @app.get("/health")
 async def health():
-    """Проверка здоровья сервиса"""
+    """Проверка здоровья"""
     return {
         "status": "ok",
-        "service": "Support Assistant Backend",
+        "service": "Team Assistant Backend",
         "rag_initialized": rag_system.model is not None,
-        "documents_indexed": len(rag_system.documents) if rag_system.documents else 0
+        "documents_indexed": len(rag_system.documents)
     }
-
 
 @app.post("/index")
 async def index_knowledge_base(request: IndexRequest):
@@ -297,65 +306,64 @@ async def index_knowledge_base(request: IndexRequest):
         kb_path = Path(request.kb_path)
         if not kb_path.exists():
             raise HTTPException(status_code=404, detail=f"Путь {kb_path} не найден")
-
-        # Загружаем документы
+        
         documents = rag_system.load_knowledge_base(kb_path)
-
+        
         if not documents:
-            raise HTTPException(status_code=400, detail="Не найдены документы для индексации")
-
-        # Создаем индекс
+            raise HTTPException(status_code=400, detail="Не найдены документы")
+        
         rag_system.create_index(documents)
-
-        # Собираем статистику
+        
+        # Статистика
         sources = set(doc['source'] for doc in documents)
-
+        types = {}
+        for doc in documents:
+            doc_type = doc['type']
+            types[doc_type] = types.get(doc_type, 0) + 1
+        
         return {
             "message": "База знаний проиндексирована",
             "total_chunks": len(documents),
             "sources": list(sources),
+            "types": types,
             "status": "success"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/ask")
 async def ask_question(request: QueryRequest):
-    """Отвечает на вопрос пользователя"""
+    """Отвечает на вопрос о проекте"""
     try:
         if not rag_system.index:
             raise HTTPException(
                 status_code=400,
                 detail="База знаний не проиндексирована. Используйте /index"
             )
-
-        # Используем переданный контекст пользователя
-        user_context = request.user_context
-
-        # Ищем релевантные документы
-        relevant_docs = rag_system.search(request.query, top_k=3)
-
+        
+        # Поиск релевантных документов
+        relevant_docs = rag_system.search(request.query, top_k=5)
+        
         if not relevant_docs:
             return {
-                "response": "К сожалению, не нашел информации по вашему вопросу в базе знаний. Пожалуйста, свяжитесь с поддержкой напрямую.",
+                "response": "Не нашел информации по этому вопросу в базе знаний.",
                 "sources": [],
                 "context": []
             }
-
-        # Генерируем ответ с контекстом пользователя
+        
+        # Генерируем ответ
         answer = rag_system.generate_answer(
             request.query,
             relevant_docs,
-            user_context
+            request.context
         )
-
+        
         # Формируем источники
-        sources = list(set([
-            f"{doc['source']} - {doc['header']}"
+        sources = [
+            f"{doc['source']} - {doc['name']}"
             for doc in relevant_docs
-        ]))
-
+        ]
+        
         return {
             "response": answer,
             "sources": sources,
@@ -364,22 +372,15 @@ async def ask_question(request: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post("/chat")
-async def chat(request: QueryRequest):
-    """Общий чат endpoint (совместимость с dev_assistant)"""
-    return await ask_question(request)
-
-
 # ============================================================================
 # Запуск
 # ============================================================================
 
 if __name__ == "__main__":
     import uvicorn
-
+    
     print("=" * 60)
-    print("🚀 Support Assistant Backend")
+    print("🚀 Team Assistant Backend")
     print("=" * 60)
-
+    
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,341 +1,21 @@
 #!/usr/bin/env python3
 """
-Support Assistant CLI
-Интерфейс для работы с системой поддержки
+Team Assistant CLI
+Интеллектуальный помощник команды разработки
 """
+import sys
 import argparse
-import requests
-import json
 from pathlib import Path
 
-BACKEND_URL = "http://localhost:8000"
-CRM_URL = "http://localhost:8001"
+# Добавляем путь к модулям
+sys.path.insert(0, str(Path(__file__).parent / 'cli_modules'))
 
-class SupportCLI:
-    def __init__(self):
-        self.backend_url = BACKEND_URL
-        self.crm_url = CRM_URL
-    
-    def index(self, kb_path):
-        """Индексирует базу знаний"""
-        print(f"📚 Индексирую базу знаний: {kb_path}\n")
-        
-        try:
-            resp = requests.post(
-                f"{self.backend_url}/index",
-                json={"kb_path": kb_path},
-                timeout=120
-            )
-            
-            if resp.status_code == 200:
-                result = resp.json()
-                print(f"✓ {result['message']}")
-                print(f"\n📊 Статистика:")
-                print(f"  Всего чанков: {result['total_chunks']}")
-                print(f"\n📄 Проиндексированные файлы:")
-                for source in result['sources']:
-                    print(f"  - {source}")
-            else:
-                print(f"✗ Ошибка: {resp.text}")
-        except Exception as e:
-            print(f"✗ Ошибка подключения: {e}")
-    
-    def ask(self, user_id, question):
-        """Задать вопрос от имени пользователя"""
-        print(f"🔍 Обрабатываю вопрос от {user_id}...\n")
-        
-        try:
-            # 1. Получаем информацию о пользователе
-            print("📊 Загружаю контекст пользователя...")
-            user_resp = requests.get(f"{self.crm_url}/crm/user/{user_id}")
-            
-            user_context = None
-            if user_resp.status_code == 200:
-                user = user_resp.json()
-                print(f"  ✓ {user['name']} ({user['email']})")
-                print(f"    План: {user['plan']}, Статус: {user['status']}")
-                
-                # Получаем открытые тикеты
-                tickets_resp = requests.get(
-                    f"{self.crm_url}/crm/user/{user_id}/tickets",
-                    params={"status": "open"}
-                )
-                
-                open_tickets = []
-                if tickets_resp.status_code == 200:
-                    tickets_data = tickets_resp.json()
-                    open_tickets = tickets_data['tickets']
-                    if open_tickets:
-                        print(f"    Открытые тикеты: {len(open_tickets)}")
-                        for ticket in open_tickets[:3]:
-                            print(f"      - {ticket['id']}: {ticket['subject']}")
-                
-                # Формируем полный контекст для Backend
-                user_context = {
-                    'user': user,
-                    'tickets': open_tickets
-                }
-            else:
-                print(f"  ⚠️ Пользователь не найден, продолжаю без контекста")
-                user = None
-            
-            # 2. Задаем вопрос в RAG с полным контекстом
-            print(f"\n📚 Ищу ответ в базе знаний...")
-            
-            request_data = {
-                "query": question,
-                "user_id": user_id
-            }
-            
-            # Добавляем контекст если есть
-            if user_context:
-                request_data["user_context"] = user_context
-            
-            answer_resp = requests.post(
-                f"{self.backend_url}/ask",
-                json=request_data,
-                timeout=60
-            )
-            
-            if answer_resp.status_code == 200:
-                result = answer_resp.json()
-                
-                print("\n" + "="*60)
-                print("💬 ОТВЕТ АССИСТЕНТА")
-                print("="*60 + "\n")
-                print(result['response'])
-                
-                if result['sources']:
-                    print(f"\n📚 Источники:")
-                    for source in result['sources']:
-                        print(f"  - {source}")
-                
-                # 3. Предлагаем создать тикет если нужно
-                if user and "тикет" not in question.lower():
-                    print("\n" + "─"*60)
-                    create = input("\n❓ Создать тикет для отслеживания? (y/n): ")
-                    if create.lower() == 'y':
-                        self._create_ticket_interactive(user_id, question, result['response'])
-            else:
-                print(f"✗ Ошибка: {answer_resp.text}")
-                
-        except Exception as e:
-            print(f"✗ Ошибка: {e}")
-    
-    def _create_ticket_interactive(self, user_id, subject, description):
-        """Интерактивное создание тикета"""
-        categories = ["authentication", "billing", "sync", "storage", "api", "how_to", "other"]
-        priorities = ["low", "medium", "high"]
-        
-        print("\n📋 Создание тикета:")
-        print("\nКатегории:")
-        for i, cat in enumerate(categories, 1):
-            print(f"  {i}. {cat}")
-        
-        cat_choice = input(f"Выберите категорию (1-{len(categories)}): ")
-        try:
-            category = categories[int(cat_choice) - 1]
-        except:
-            category = "other"
-        
-        print("\nПриоритет:")
-        for i, pri in enumerate(priorities, 1):
-            print(f"  {i}. {pri}")
-        
-        pri_choice = input(f"Выберите приоритет (1-{len(priorities)}, по умолчанию medium): ")
-        try:
-            priority = priorities[int(pri_choice) - 1]
-        except:
-            priority = "medium"
-        
-        # Создаем тикет
-        ticket_data = {
-            "user_id": user_id,
-            "subject": subject[:100],  # Ограничиваем длину
-            "description": f"Вопрос: {subject}\n\nПредложенное решение:\n{description[:500]}",
-            "category": category,
-            "priority": priority
-        }
-        
-        resp = requests.post(
-            f"{self.crm_url}/crm/ticket",
-            json=ticket_data
-        )
-        
-        if resp.status_code == 200:
-            result = resp.json()
-            ticket_id = result['ticket_id']
-            print(f"\n✅ Тикет создан: {ticket_id}")
-        else:
-            print(f"\n✗ Ошибка создания тикета: {resp.text}")
-    
-    def ticket(self, ticket_id):
-        """Показать детали тикета"""
-        print(f"📋 Загружаю тикет {ticket_id}...\n")
-        
-        try:
-            resp = requests.get(f"{self.crm_url}/crm/ticket/{ticket_id}")
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                ticket = data['ticket']
-                user = data['user']
-                
-                print("="*60)
-                print(f"📋 Тикет: {ticket['id']}")
-                print("="*60)
-                print(f"\n👤 Пользователь: {user['name']} ({user['email']})")
-                print(f"   План: {user['plan']}")
-                print(f"\n📌 Тема: {ticket['subject']}")
-                print(f"📝 Описание:\n   {ticket['description']}")
-                print(f"\n📊 Статус: {ticket['status']}")
-                print(f"⚠️  Приоритет: {ticket['priority']}")
-                print(f"📂 Категория: {ticket['category']}")
-                print(f"👥 Назначен: {ticket['assigned_to']}")
-                print(f"📅 Создан: {ticket['created']}")
-                print(f"🔄 Обновлен: {ticket['updated']}")
-                
-                if ticket.get('resolution'):
-                    print(f"\n✅ Решение: {ticket['resolution']}")
-                
-                # Предлагаем AI решение
-                print("\n" + "─"*60)
-                suggest = input("\n❓ Получить AI рекомендацию по решению? (y/n): ")
-                if suggest.lower() == 'y':
-                    self._suggest_solution(ticket_id, ticket)
-            else:
-                print(f"✗ Ошибка: {resp.text}")
-        except Exception as e:
-            print(f"✗ Ошибка: {e}")
-    
-    def _suggest_solution(self, ticket_id, ticket):
-        """Предлагает AI решение для тикета"""
-        print("\n🤖 Генерирую рекомендацию...")
-        
-        query = f"{ticket['subject']}. {ticket['description']}"
-        
-        try:
-            resp = requests.post(
-                f"{self.backend_url}/ask",
-                json={"query": query, "user_id": ticket['user_id']},
-                timeout=60
-            )
-            
-            if resp.status_code == 200:
-                result = resp.json()
-                
-                print("\n" + "="*60)
-                print("💡 РЕКОМЕНДУЕМОЕ РЕШЕНИЕ")
-                print("="*60 + "\n")
-                print(result['response'])
-                
-                # Предлагаем обновить тикет
-                print("\n" + "─"*60)
-                update = input("\n❓ Добавить решение в тикет? (y/n): ")
-                if update.lower() == 'y':
-                    update_resp = requests.put(
-                        f"{self.crm_url}/crm/ticket/{ticket_id}",
-                        json={"resolution": result['response'][:500]}
-                    )
-                    
-                    if update_resp.status_code == 200:
-                        print("✅ Тикет обновлен")
-                    else:
-                        print(f"✗ Ошибка обновления: {update_resp.text}")
-        except Exception as e:
-            print(f"✗ Ошибка: {e}")
-    
-    def user(self, user_id):
-        """Показать информацию о пользователе"""
-        print(f"👤 Загружаю информацию о {user_id}...\n")
-        
-        try:
-            # Информация о пользователе
-            user_resp = requests.get(f"{self.crm_url}/crm/user/{user_id}")
-            
-            if user_resp.status_code != 200:
-                print(f"✗ Пользователь не найден: {user_resp.text}")
-                return
-            
-            user = user_resp.json()
-            
-            print("="*60)
-            print(f"👤 Пользователь: {user['name']}")
-            print("="*60)
-            print(f"\n📧 Email: {user['email']}")
-            print(f"💳 План: {user['plan']}")
-            print(f"📊 Статус: {user['status']}")
-            print(f"📅 Регистрация: {user['joined']}")
-            print(f"🔐 2FA: {'✓ Включен' if user.get('2fa_enabled') else '✗ Отключен'}")
-            
-            if user.get('storage_limit_gb'):
-                usage_pct = (user['storage_used_gb'] / user['storage_limit_gb']) * 100
-                print(f"\n💾 Хранилище: {user['storage_used_gb']:.1f} GB / {user['storage_limit_gb']} GB ({usage_pct:.0f}%)")
-            else:
-                print(f"\n💾 Хранилище: {user['storage_used_gb']:.1f} GB (Unlimited)")
-            
-            print(f"📱 Устройства: {user.get('devices', 0)}")
-            
-            if user.get('payment_method'):
-                print(f"💳 Способ оплаты: {user['payment_method']}")
-            
-            if user.get('subscription_renews'):
-                print(f"🔄 Продление: {user['subscription_renews']}")
-            
-            # Тикеты пользователя
-            tickets_resp = requests.get(f"{self.crm_url}/crm/user/{user_id}/tickets")
-            
-            if tickets_resp.status_code == 200:
-                tickets_data = tickets_resp.json()
-                tickets = tickets_data['tickets']
-                
-                print(f"\n📋 Тикеты: {len(tickets)}")
-                
-                open_tickets = [t for t in tickets if t['status'] == 'open']
-                if open_tickets:
-                    print(f"\n  🔓 Открытые ({len(open_tickets)}):")
-                    for ticket in open_tickets:
-                        print(f"    - {ticket['id']}: {ticket['subject']} ({ticket['priority']})")
-                
-                in_progress = [t for t in tickets if t['status'] == 'in_progress']
-                if in_progress:
-                    print(f"\n  ⏳ В работе ({len(in_progress)}):")
-                    for ticket in in_progress:
-                        print(f"    - {ticket['id']}: {ticket['subject']}")
-        except Exception as e:
-            print(f"✗ Ошибка: {e}")
-    
-    def stats(self):
-        """Показать статистику CRM"""
-        print("📊 Загружаю статистику...\n")
-        
-        try:
-            resp = requests.get(f"{self.crm_url}/crm/stats")
-            
-            if resp.status_code == 200:
-                stats = resp.json()
-                
-                print("="*60)
-                print("📊 СТАТИСТИКА СИСТЕМЫ")
-                print("="*60)
-                
-                print(f"\n👥 Пользователи: {stats['users']['total']}")
-                print("   По планам:")
-                for plan, count in stats['users']['by_plan'].items():
-                    print(f"     - {plan}: {count}")
-                
-                print(f"\n📋 Тикеты: {stats['tickets']['total']}")
-                print(f"   🔓 Открытые: {stats['tickets']['open']}")
-                print(f"   ⏳ В работе: {stats['tickets']['in_progress']}")
-                print(f"   ✅ Решенные: {stats['tickets']['resolved']}")
-            else:
-                print(f"✗ Ошибка: {resp.text}")
-        except Exception as e:
-            print(f"✗ Ошибка: {e}")
+from basic_commands import TeamAssistant
+from smart_commands import SmartCommands
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Support Assistant - AI помощник службы поддержки CloudDocs",
+        description="Team Assistant - AI помощник команды разработки",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Примеры использования:
@@ -343,41 +23,94 @@ def main():
   # Индексация базы знаний
   %(prog)s index knowledge_base/
 
-  # Задать вопрос от имени пользователя
-  %(prog)s ask user_001 "почему не работает синхронизация?"
+  # Статус проекта
+  %(prog)s status
 
-  # Показать детали тикета
-  %(prog)s ticket ticket_101
-
-  # Информация о пользователе
-  %(prog)s user user_001
-
-  # Статистика системы
-  %(prog)s stats
+  # Задачи с фильтрами
+  %(prog)s tasks --priority high --status open
+  
+  # Создать задачу
+  %(prog)s task create "Исправить баг" --priority high
+  
+  # Обновить задачу
+  %(prog)s task update TASK-101 --status in_progress
+  
+  # AI приоритизация
+  %(prog)s prioritize
+  
+  # Рекомендация что делать
+  %(prog)s recommend
+  
+  # Анализ блокеров
+  %(prog)s blockers
+  
+  # Вопрос о проекте
+  %(prog)s ask "как работает авторизация?"
         """
     )
     
     subparsers = parser.add_subparsers(dest='command', help='Доступные команды')
     
-    # Команда index
+    # ========================================================================
+    # Базовые команды
+    # ========================================================================
+    
+    # index
     index_parser = subparsers.add_parser('index', help='Индексировать базу знаний')
     index_parser.add_argument('path', help='Путь к базе знаний')
     
-    # Команда ask
-    ask_parser = subparsers.add_parser('ask', help='Задать вопрос')
-    ask_parser.add_argument('user_id', help='ID пользователя')
-    ask_parser.add_argument('question', help='Вопрос')
+    # status
+    status_parser = subparsers.add_parser('status', help='Статус проекта')
     
-    # Команда ticket
-    ticket_parser = subparsers.add_parser('ticket', help='Показать тикет')
-    ticket_parser.add_argument('ticket_id', help='ID тикета')
+    # tasks
+    tasks_parser = subparsers.add_parser('tasks', help='Показать задачи')
+    tasks_parser.add_argument('--status', help='Фильтр по статусу')
+    tasks_parser.add_argument('--priority', help='Фильтр по приоритету')
+    tasks_parser.add_argument('--assignee', help='Фильтр по исполнителю')
     
-    # Команда user
-    user_parser = subparsers.add_parser('user', help='Информация о пользователе')
-    user_parser.add_argument('user_id', help='ID пользователя')
+    # task (subcommands)
+    task_parser = subparsers.add_parser('task', help='Управление задачей')
+    task_subparsers = task_parser.add_subparsers(dest='task_action')
     
-    # Команда stats
-    stats_parser = subparsers.add_parser('stats', help='Статистика системы')
+    # task create
+    create_parser = task_subparsers.add_parser('create', help='Создать задачу')
+    create_parser.add_argument('title', help='Название задачи')
+    create_parser.add_argument('--priority', default='medium', 
+                              choices=['low', 'medium', 'high'],
+                              help='Приоритет')
+    create_parser.add_argument('--assignee', help='Исполнитель (ID)')
+    create_parser.add_argument('--estimate', type=int, help='Оценка в часах')
+    
+    # task update
+    update_parser = task_subparsers.add_parser('update', help='Обновить задачу')
+    update_parser.add_argument('task_id', help='ID задачи')
+    update_parser.add_argument('--status', help='Новый статус')
+    update_parser.add_argument('--assignee', help='Новый исполнитель')
+    update_parser.add_argument('--priority', help='Новый приоритет')
+    
+    # ========================================================================
+    # Умные команды
+    # ========================================================================
+    
+    # prioritize
+    prioritize_parser = subparsers.add_parser('prioritize', 
+                                             help='AI приоритизация задач')
+    
+    # recommend
+    recommend_parser = subparsers.add_parser('recommend', 
+                                            help='Рекомендация что делать')
+    
+    # blockers
+    blockers_parser = subparsers.add_parser('blockers', 
+                                           help='Анализ блокеров')
+    
+    # ask
+    ask_parser = subparsers.add_parser('ask', help='Задать вопрос о проекте')
+    ask_parser.add_argument('question', help='Ваш вопрос')
+    
+    # ========================================================================
+    # Обработка команд
+    # ========================================================================
     
     args = parser.parse_args()
     
@@ -385,18 +118,40 @@ def main():
         parser.print_help()
         return
     
-    cli = SupportCLI()
+    # Инициализируем ассистентов
+    basic = TeamAssistant()
+    smart = SmartCommands()
     
+    # Базовые команды
     if args.command == 'index':
-        cli.index(args.path)
+        basic.index(args.path)
+    
+    elif args.command == 'status':
+        basic.status()
+    
+    elif args.command == 'tasks':
+        basic.tasks(args.status, args.priority, args.assignee)
+    
+    elif args.command == 'task':
+        if args.task_action == 'create':
+            basic.task_create(args.title, args.priority, args.assignee, args.estimate)
+        elif args.task_action == 'update':
+            basic.task_update(args.task_id, args.status, args.assignee, args.priority)
+        else:
+            task_parser.print_help()
+    
+    # Умные команды
+    elif args.command == 'prioritize':
+        smart.prioritize()
+    
+    elif args.command == 'recommend':
+        smart.recommend_next()
+    
+    elif args.command == 'blockers':
+        smart.analyze_blockers()
+    
     elif args.command == 'ask':
-        cli.ask(args.user_id, args.question)
-    elif args.command == 'ticket':
-        cli.ticket(args.ticket_id)
-    elif args.command == 'user':
-        cli.user(args.user_id)
-    elif args.command == 'stats':
-        cli.stats()
+        smart.ask(args.question)
 
 if __name__ == "__main__":
     main()

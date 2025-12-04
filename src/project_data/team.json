@@ -1,0 +1,59 @@
+{
+  "team": [
+    {
+      "id": "john_doe",
+      "name": "John Doe",
+      "role": "Backend Lead",
+      "email": "john.doe@team.com",
+      "skills": ["Python", "FastAPI", "PostgreSQL", "Redis"],
+      "capacity_hours_per_sprint": 60,
+      "current_load": 11,
+      "timezone": "UTC+3",
+      "avatar": "👨‍💻"
+    },
+    {
+      "id": "jane_smith",
+      "name": "Jane Smith",
+      "role": "Frontend Developer",
+      "email": "jane.smith@team.com",
+      "skills": ["React", "TypeScript", "CSS", "Testing"],
+      "capacity_hours_per_sprint": 60,
+      "current_load": 22,
+      "timezone": "UTC+0",
+      "avatar": "👩‍💻"
+    },
+    {
+      "id": "bob_wilson",
+      "name": "Bob Wilson",
+      "role": "DevOps Engineer",
+      "email": "bob.wilson@team.com",
+      "skills": ["Docker", "Kubernetes", "AWS", "CI/CD"],
+      "capacity_hours_per_sprint": 60,
+      "current_load": 28.5,
+      "timezone": "UTC-5",
+      "avatar": "🧑‍💻"
+    },
+    {
+      "id": "alice_brown",
+      "name": "Alice Brown",
+      "role": "QA Engineer",
+      "email": "alice.brown@team.com",
+      "skills": ["Testing", "Automation", "Selenium", "Pytest"],
+      "capacity_hours_per_sprint": 60,
+      "current_load": 12,
+      "timezone": "UTC+2",
+      "avatar": "👩‍🔬"
+    },
+    {
+      "id": "charlie_davis",
+      "name": "Charlie Davis",
+      "role": "Product Manager",
+      "email": "charlie.davis@team.com",
+      "skills": ["Planning", "Documentation", "Analytics"],
+      "capacity_hours_per_sprint": 40,
+      "current_load": 13,
+      "timezone": "UTC+3",
+      "avatar": "📊"
+    }
+  ]
+}
