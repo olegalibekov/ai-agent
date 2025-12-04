@@ -358,18 +358,5 @@
       "sprint": "sprint_12",
       "labels": []
     },
-    {
-      "id": "TASK-142",
-      "title": "Настроить мониторинг метрик",
-      "description": "Создано через Team Assistant CLI",
-      "status": "open",
-      "priority": "high",
-      "assignee": "bob_wilson",
-      "created": "2025-12-04",
-      "updated": "2025-12-04",
-      "estimate_hours": 4,
-      "sprint": "sprint_12",
-      "labels": []
-    }
   ]
 }
