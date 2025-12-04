@@ -7,12 +7,19 @@
       "status": "in_progress",
       "priority": "high",
       "assignee": "john_doe",
-      "created": "2024-12-01",
-      "updated": "2024-12-04",
+      "created": "2025-12-01",
+      "updated": "2025-12-04",
       "estimate_hours": 3,
       "sprint": "sprint_12",
-      "labels": ["bug", "auth", "critical"],
-      "blocks": ["TASK-105", "TASK-107"],
+      "labels": [
+        "bug",
+        "auth",
+        "critical"
+      ],
+      "blocks": [
+        "TASK-105",
+        "TASK-107"
+      ],
       "related_pr": "PR-45"
     },
     {
@@ -22,24 +29,32 @@
       "status": "open",
       "priority": "medium",
       "assignee": "jane_smith",
-      "created": "2024-11-28",
-      "updated": "2024-12-01",
+      "created": "2025-11-28",
+      "updated": "2025-12-01",
       "estimate_hours": 8,
       "sprint": "sprint_12",
-      "labels": ["feature", "ui", "frontend"]
+      "labels": [
+        "feature",
+        "ui",
+        "frontend"
+      ]
     },
     {
       "id": "TASK-103",
       "title": "Обновить зависимости backend",
-      "description": "Найдены уязвимости в npm пакетах. CVE-2024-12345 (критичность 8.5)",
+      "description": "Найдены уязвимости в npm пакетах. CVE-2025-12345 (критичность 8.5)",
       "status": "open",
       "priority": "medium",
       "assignee": null,
-      "created": "2024-12-02",
-      "updated": "2024-12-02",
+      "created": "2025-12-02",
+      "updated": "2025-12-02",
       "estimate_hours": 2,
       "sprint": "sprint_12",
-      "labels": ["security", "dependencies", "backend"],
+      "labels": [
+        "security",
+        "dependencies",
+        "backend"
+      ],
       "cve_severity": 8.5
     },
     {
@@ -49,11 +64,14 @@
       "status": "in_progress",
       "priority": "high",
       "assignee": "bob_wilson",
-      "created": "2024-11-25",
-      "updated": "2024-12-03",
+      "created": "2025-11-25",
+      "updated": "2025-12-03",
       "estimate_hours": 16,
       "sprint": "sprint_12",
-      "labels": ["devops", "infrastructure"],
+      "labels": [
+        "devops",
+        "infrastructure"
+      ],
       "progress_percent": 70
     },
     {
@@ -63,12 +81,17 @@
       "status": "blocked",
       "priority": "high",
       "assignee": null,
-      "created": "2024-11-30",
-      "updated": "2024-12-04",
+      "created": "2025-11-30",
+      "updated": "2025-12-04",
       "estimate_hours": 4,
       "sprint": "sprint_12",
-      "labels": ["database", "migration"],
-      "blocked_by": ["TASK-101"]
+      "labels": [
+        "database",
+        "migration"
+      ],
+      "blocked_by": [
+        "TASK-101"
+      ]
     },
     {
       "id": "TASK-106",
@@ -77,11 +100,14 @@
       "status": "open",
       "priority": "medium",
       "assignee": "charlie_davis",
-      "created": "2024-11-29",
-      "updated": "2024-12-01",
+      "created": "2025-11-29",
+      "updated": "2025-12-01",
       "estimate_hours": 6,
       "sprint": "sprint_12",
-      "labels": ["documentation", "api"]
+      "labels": [
+        "documentation",
+        "api"
+      ]
     },
     {
       "id": "TASK-107",
@@ -90,12 +116,18 @@
       "status": "blocked",
       "priority": "high",
       "assignee": "john_doe",
-      "created": "2024-12-01",
-      "updated": "2024-12-04",
+      "created": "2025-12-01",
+      "updated": "2025-12-04",
       "estimate_hours": 5,
       "sprint": "sprint_12",
-      "labels": ["security", "api", "backend"],
-      "blocked_by": ["TASK-101"]
+      "labels": [
+        "security",
+        "api",
+        "backend"
+      ],
+      "blocked_by": [
+        "TASK-101"
+      ]
     },
     {
       "id": "TASK-108",
@@ -104,11 +136,15 @@
       "status": "in_progress",
       "priority": "medium",
       "assignee": "jane_smith",
-      "created": "2024-11-27",
-      "updated": "2024-12-03",
+      "created": "2025-11-27",
+      "updated": "2025-12-03",
       "estimate_hours": 10,
       "sprint": "sprint_12",
-      "labels": ["testing", "api", "backend"],
+      "labels": [
+        "testing",
+        "api",
+        "backend"
+      ],
       "progress_percent": 45,
       "blocks_release": true
     },
@@ -119,11 +155,14 @@
       "status": "open",
       "priority": "medium",
       "assignee": "bob_wilson",
-      "created": "2024-12-03",
-      "updated": "2024-12-03",
+      "created": "2025-12-03",
+      "updated": "2025-12-03",
       "estimate_hours": 4,
       "sprint": "sprint_12",
-      "labels": ["performance", "database"]
+      "labels": [
+        "performance",
+        "database"
+      ]
     },
     {
       "id": "TASK-110",
@@ -132,11 +171,13 @@
       "status": "waiting_review",
       "priority": "high",
       "assignee": "bob_wilson",
-      "created": "2024-12-04",
-      "updated": "2024-12-04",
+      "created": "2025-12-04",
+      "updated": "2025-12-04",
       "estimate_hours": 0.5,
       "sprint": "sprint_12",
-      "labels": ["review"],
+      "labels": [
+        "review"
+      ],
       "blocks_release": true,
       "related_pr": "PR-45"
     },
@@ -147,11 +188,14 @@
       "status": "open",
       "priority": "low",
       "assignee": null,
-      "created": "2024-11-26",
-      "updated": "2024-11-26",
+      "created": "2025-11-26",
+      "updated": "2025-11-26",
       "estimate_hours": 3,
       "sprint": "sprint_13",
-      "labels": ["logging", "security"]
+      "labels": [
+        "logging",
+        "security"
+      ]
     },
     {
       "id": "TASK-112",
@@ -160,11 +204,14 @@
       "status": "open",
       "priority": "low",
       "assignee": null,
-      "created": "2024-12-02",
-      "updated": "2024-12-02",
+      "created": "2025-12-02",
+      "updated": "2025-12-02",
       "estimate_hours": 6,
       "sprint": "sprint_13",
-      "labels": ["refactoring", "backend"]
+      "labels": [
+        "refactoring",
+        "backend"
+      ]
     },
     {
       "id": "TASK-113",
@@ -173,11 +220,14 @@
       "status": "open",
       "priority": "medium",
       "assignee": "bob_wilson",
-      "created": "2024-11-30",
-      "updated": "2024-12-01",
+      "created": "2025-11-30",
+      "updated": "2025-12-01",
       "estimate_hours": 8,
       "sprint": "sprint_12",
-      "labels": ["monitoring", "devops"]
+      "labels": [
+        "monitoring",
+        "devops"
+      ]
     },
     {
       "id": "TASK-114",
@@ -186,11 +236,14 @@
       "status": "open",
       "priority": "low",
       "assignee": "jane_smith",
-      "created": "2024-12-01",
-      "updated": "2024-12-01",
+      "created": "2025-12-01",
+      "updated": "2025-12-01",
       "estimate_hours": 4,
       "sprint": "sprint_13",
-      "labels": ["feature", "export"]
+      "labels": [
+        "feature",
+        "export"
+      ]
     },
     {
       "id": "TASK-115",
@@ -199,11 +252,14 @@
       "status": "open",
       "priority": "high",
       "assignee": "alice_brown",
-      "created": "2024-12-03",
-      "updated": "2024-12-03",
+      "created": "2025-12-03",
+      "updated": "2025-12-03",
       "estimate_hours": 12,
       "sprint": "sprint_12",
-      "labels": ["qa", "testing"],
+      "labels": [
+        "qa",
+        "testing"
+      ],
       "blocks_release": true
     },
     {
@@ -213,12 +269,14 @@
       "status": "done",
       "priority": "low",
       "assignee": "charlie_davis",
-      "created": "2024-11-20",
-      "updated": "2024-11-25",
-      "completed": "2024-11-25",
+      "created": "2025-11-20",
+      "updated": "2025-11-25",
+      "completed": "2025-11-25",
       "estimate_hours": 1,
       "sprint": "sprint_11",
-      "labels": ["documentation"]
+      "labels": [
+        "documentation"
+      ]
     },
     {
       "id": "TASK-117",
@@ -227,12 +285,15 @@
       "status": "done",
       "priority": "high",
       "assignee": "bob_wilson",
-      "created": "2024-11-18",
-      "updated": "2024-11-23",
-      "completed": "2024-11-23",
+      "created": "2025-11-18",
+      "updated": "2025-11-23",
+      "completed": "2025-11-23",
       "estimate_hours": 3,
       "sprint": "sprint_11",
-      "labels": ["devops", "database"]
+      "labels": [
+        "devops",
+        "database"
+      ]
     },
     {
       "id": "TASK-118",
@@ -241,12 +302,15 @@
       "status": "done",
       "priority": "medium",
       "assignee": "jane_smith",
-      "created": "2024-11-22",
-      "updated": "2024-11-28",
-      "completed": "2024-11-28",
+      "created": "2025-11-22",
+      "updated": "2025-11-28",
+      "completed": "2025-11-28",
       "estimate_hours": 2,
       "sprint": "sprint_11",
-      "labels": ["bug", "frontend"]
+      "labels": [
+        "bug",
+        "frontend"
+      ]
     },
     {
       "id": "TASK-119",
@@ -255,11 +319,14 @@
       "status": "in_progress",
       "priority": "low",
       "assignee": "charlie_davis",
-      "created": "2024-12-02",
-      "updated": "2024-12-04",
+      "created": "2025-12-02",
+      "updated": "2025-12-04",
       "estimate_hours": 5,
       "sprint": "sprint_12",
-      "labels": ["integration", "notifications"],
+      "labels": [
+        "integration",
+        "notifications"
+      ],
       "progress_percent": 30
     },
     {
@@ -269,11 +336,40 @@
       "status": "open",
       "priority": "medium",
       "assignee": "charlie_davis",
-      "created": "2024-12-03",
-      "updated": "2024-12-03",
+      "created": "2025-12-03",
+      "updated": "2025-12-03",
       "estimate_hours": 2,
       "sprint": "sprint_12",
-      "labels": ["documentation", "release"]
+      "labels": [
+        "documentation",
+        "release"
+      ]
+    },
+    {
+      "id": "TASK-141",
+      "title": "Добавить мониторинг",
+      "description": "Создано через Team Assistant CLI",
+      "status": "open",
+      "priority": "high",
+      "assignee": "bob_wilson",
+      "created": "2025-12-04",
+      "updated": "2025-12-04",
+      "estimate_hours": null,
+      "sprint": "sprint_12",
+      "labels": []
+    },
+    {
+      "id": "TASK-142",
+      "title": "Настроить мониторинг метрик",
+      "description": "Создано через Team Assistant CLI",
+      "status": "open",
+      "priority": "high",
+      "assignee": "bob_wilson",
+      "created": "2025-12-04",
+      "updated": "2025-12-04",
+      "estimate_hours": 4,
+      "sprint": "sprint_12",
+      "labels": []
     }
   ]
 }

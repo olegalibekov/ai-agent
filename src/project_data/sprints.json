@@ -3,8 +3,8 @@
     {
       "id": "sprint_12",
       "name": "Sprint 12: Auth & Release Prep",
-      "start_date": "2024-11-25",
-      "end_date": "2024-12-08",
+      "start_date": "2025-11-25",
+      "end_date": "2025-12-08",
       "duration_weeks": 2,
       "status": "active",
       "goal": "Исправить критические баги и подготовить релиз 2.0",
@@ -16,7 +16,7 @@
       "committed_hours": 120,
       "spent_hours": 72,
       "release_planned": true,
-      "release_date": "2024-12-15",
+      "release_date": "2025-12-15",
       "risks": [
         "Блокеры в auth модуле",
         "Недостаточное покрытие тестами"
@@ -25,8 +25,8 @@
     {
       "id": "sprint_11",
       "name": "Sprint 11: Infrastructure",
-      "start_date": "2024-11-11",
-      "end_date": "2024-11-24",
+      "start_date": "2025-11-11",
+      "end_date": "2025-11-24",
       "duration_weeks": 2,
       "status": "completed",
       "goal": "Настроить infrastructure и backup",
@@ -40,8 +40,8 @@
     {
       "id": "sprint_13",
       "name": "Sprint 13: Post-release",
-      "start_date": "2024-12-09",
-      "end_date": "2024-12-22",
+      "start_date": "2025-12-09",
+      "end_date": "2025-12-22",
       "duration_weeks": 2,
       "status": "planned",
       "goal": "Рефакторинг и новые фичи",
