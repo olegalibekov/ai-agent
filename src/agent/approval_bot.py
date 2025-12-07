@@ -118,7 +118,6 @@ class ApprovalBot:
         print("=" * 60)
         print("🤖 Telegram Approval Bot")
         print("=" * 60)
-        print(f"Admin ID: {TELEGRAM_ADMIN_ID}")
         print(f"Channel: {TELEGRAM_CHANNEL_ID}")
         print("Ожидаю команды...")
         
