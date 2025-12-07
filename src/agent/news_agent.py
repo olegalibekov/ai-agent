@@ -9,6 +9,9 @@ import requests
 from datetime import datetime, timedelta
 from typing import List, Dict
 import anthropic
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Добавляем пути
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
