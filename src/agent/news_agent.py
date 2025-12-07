@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 import anthropic
 from dotenv import load_dotenv
+from datetime import datetime, timedelta, timezone
 
 load_dotenv()
 
@@ -204,17 +205,78 @@ class NewsAgent:
             print(f"⚠️ Ошибка сохранения в MCP: {e}")
             return None
     
-    def send_to_telegram(self, text: str, url: str) -> bool:
+    def send_to_telegram(self, text: str, url: str, news_item: Dict) -> bool:
         """Отправляет в Telegram"""
         if not self.telegram_bot_token or not self.telegram_chat_id:
-            print("⚠️ Telegram токен/chat_id не установлены")
-            print(f"\n📱 TELEGRAM POST (симуляция):")
+            print("\n" + "═" * 60)
+            print("📱 TELEGRAM POST (СИМУЛЯЦИЯ)")
+            print("═" * 60)
+            print("\n⚠️  Токены не установлены, показываю что БЫЛО БЫ опубликовано:\n")
             print("─" * 60)
             print(text)
-            print(f"\n🔗 {url}")
+            print(f"\n🔗 Читать полностью: {url}")
             print("─" * 60)
+            print("\n💡 Для реальной публикации добавь:")
+            print("   export TELEGRAM_BOT_TOKEN='your_token'")
+            print("   export TELEGRAM_CHAT_ID='@your_channel'")
+            print("   export TELEGRAM_ADMIN_ID='your_user_id'  # Для аппрува")
+            print("═" * 60)
             return True
         
+        try:
+            # Отправляем админу на аппрув
+            admin_id = os.getenv('TELEGRAM_ADMIN_ID')
+            
+            if admin_id:
+                return self._send_for_approval(text, url, news_item, admin_id)
+            else:
+                # Прямая публикация без аппрува
+                return self._publish_to_channel(text, url)
+        
+        except Exception as e:
+            print(f"✗ Ошибка отправки: {e}")
+            return False
+    
+    def _send_for_approval(self, text: str, url: str, news_item: Dict, admin_id: str) -> bool:
+        """Отправляет новость админу для аппрува"""
+        try:
+            telegram_url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
+            
+            # Формируем сообщение с кнопками
+            preview_text = f"📰 НОВАЯ НОВОСТЬ ДЛЯ АППРУВА:\n\n{text}\n\n🔗 {url}"
+            
+            # Inline кнопки для аппрува
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ Опубликовать", "callback_data": f"approve_{news_item.get('title', '')[:20]}"},
+                        {"text": "❌ Отклонить", "callback_data": f"reject_{news_item.get('title', '')[:20]}"}
+                    ]
+                ]
+            }
+            
+            response = requests.post(telegram_url, json={
+                "chat_id": admin_id,
+                "text": preview_text,
+                "parse_mode": "HTML",
+                "reply_markup": keyboard
+            })
+            
+            if response.status_code == 200:
+                print("✓ Отправлено админу на аппрув")
+                print(f"  Админ ID: {admin_id}")
+                print(f"  Ожидается решение: ✅ Опубликовать или ❌ Отклонить")
+                return True
+            else:
+                print(f"✗ Ошибка отправки админу: {response.text}")
+                return False
+        
+        except Exception as e:
+            print(f"✗ Ошибка аппрува: {e}")
+            return False
+    
+    def _publish_to_channel(self, text: str, url: str) -> bool:
+        """Публикует напрямую в канал"""
         try:
             telegram_url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
             
@@ -228,13 +290,14 @@ class NewsAgent:
             })
             
             if response.status_code == 200:
-                print("✓ Отправлено в Telegram")
+                print("✓ Опубликовано в канал")
                 return True
             else:
-                print(f"✗ Ошибка Telegram: {response.text}")
+                print(f"✗ Ошибка публикации: {response.text}")
                 return False
+        
         except Exception as e:
-            print(f"✗ Ошибка отправки: {e}")
+            print(f"✗ Ошибка публикации: {e}")
             return False
     
     def run(self):
@@ -284,7 +347,7 @@ class NewsAgent:
             
             # Отправляем в Telegram
             text = news.get('formatted_text', news['title'])
-            self.send_to_telegram(text, news['url'])
+            self.send_to_telegram(text, news['url'], news)
             
             # Добавляем в RAG индекс
             self.rag.add_news(news)

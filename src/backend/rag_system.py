@@ -10,6 +10,7 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 import json
+from datetime import datetime, timedelta, timezone
 
 class NewsRAG:
     def __init__(self, index_path: str = "data/news_index"):
