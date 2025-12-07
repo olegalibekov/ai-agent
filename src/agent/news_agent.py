@@ -264,7 +264,6 @@ class NewsAgent:
             
             if response.status_code == 200:
                 print("✓ Отправлено админу на аппрув")
-                print(f"  Админ ID: {admin_id}")
                 print(f"  Ожидается решение: ✅ Опубликовать или ❌ Отклонить")
                 return True
             else:
