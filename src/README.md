@@ -232,7 +232,7 @@ news-bot/
 ```json
 {
   "max_posts_per_day": 10,
-  "min_interval_minutes": 60,
+  "min_interval_minutes": 1,
   "categories": ["tech", "business", "science"],
   "sources": ["TechCrunch", "Hacker News"],
   "enabled": true,

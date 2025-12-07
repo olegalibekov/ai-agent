@@ -69,7 +69,7 @@ class PostsManager:
             # Дефолтные настройки
             self.settings = {
                 "max_posts_per_day": 10,
-                "min_interval_minutes": 60,
+                "min_interval_minutes": 1,
                 "categories": ["tech", "business", "science", "world"],
                 "sources": ["TechCrunch", "Hacker News", "Reuters"],
                 "enabled": True
@@ -162,7 +162,7 @@ class PostsManager:
         if self.posts:
             last_post = self.posts[-1]
             last_posted = datetime.fromisoformat(last_post['posted_at'])
-            min_interval = timedelta(minutes=self.settings.get('min_interval_minutes', 60))
+            min_interval = timedelta(minutes=self.settings.get('min_interval_minutes', 1))
             
             time_since_last = datetime.utcnow() - last_posted
             
