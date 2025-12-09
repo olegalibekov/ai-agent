@@ -108,7 +108,7 @@ def handle_update(update: dict) -> None:
         thinking_data = thinking_resp.json()
         thinking_msg = thinking_data.get("result", {}).get("message_id")
     except Exception:
-        pass  # если не смогли отправить — не критично
+        pass
 
     try:
         answer = ask_ollama(text)
@@ -116,7 +116,6 @@ def handle_update(update: dict) -> None:
         send_message(chat_id, f"Ошибка при обращении к локальной модели:\n{e}", message_id)
         return
 
-    # Можно при желании удалить/переписать "думаю..." — но у Телеграма для этого отдельный метод.
     send_message(chat_id, answer, message_id)
 
 
