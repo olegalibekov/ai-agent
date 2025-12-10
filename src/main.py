@@ -1,141 +1,89 @@
-import os
-import time
-import requests
-from dotenv import load_dotenv
+#!/usr/bin/env python3
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import urllib.request
 
-load_dotenv()
-
-MODEL_NAME = "llama3.1:8b"
 OLLAMA_URL = "http://localhost:11434/api/chat"
-
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TELEGRAM_BOT_TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN не найден. Добавь его в .env или в переменные окружения.")
-
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+MODEL = "llama3.2:3b"  # твоя модель
 
 
 def ask_ollama(prompt: str) -> str:
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        "stream": False,
-    }
+    payload = json.dumps({
+        "model": MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False
+    }).encode("utf-8")
 
-    response = requests.post(OLLAMA_URL, json=payload, timeout=600)
-    response.raise_for_status()
-    data = response.json()
-    return data["message"]["content"]
-
-
-def send_message(chat_id: int, text: str, reply_to_message_id: int | None = None) -> None:
-    # Ограничение Telegram — 4096 символов в сообщении
-    for chunk_start in range(0, len(text), 4096):
-        chunk = text[chunk_start:chunk_start + 4096]
-        payload = {
-            "chat_id": chat_id,
-            "text": chunk,
-        }
-        if reply_to_message_id and chunk_start == 0:
-            payload["reply_to_message_id"] = reply_to_message_id
-
-        resp = requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
-        resp.raise_for_status()
+    req = urllib.request.Request(
+        OLLAMA_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        return data["message"]["content"]
 
 
-def get_updates(offset: int | None = None) -> list[dict]:
-    params = {
-        "timeout": 30,  # long polling
-    }
-    if offset is not None:
-        params["offset"] = offset
+HTML_PAGE = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Local LLaMA</title>
+</head>
+<body>
+<h1>Local LLaMA Chat</h1>
+<input id="msg" type="text" placeholder="Введите сообщение" style="width:300px;">
+<button onclick="send()">Отправить</button>
 
-    resp = requests.get(f"{TELEGRAM_API_URL}/getUpdates", params=params, timeout=35)
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("result", [])
+<pre id="response" style="white-space:pre-wrap; margin-top:20px;"></pre>
 
-
-def handle_update(update: dict) -> None:
-    message = update.get("message") or update.get("edited_message")
-    if not message:
-        return
-
-    chat_id = message["chat"]["id"]
-    message_id = message["message_id"]
-    text = message.get("text")
-
-    if not text:
-        send_message(chat_id, "Понимаю только текстовые сообщения 🙃", message_id)
-        return
-
-    # Простая обработка команд
-    if text.startswith("/start"):
-        send_message(
-            chat_id,
-            "Привет! Я бот, который отвечает с помощью локальной LLM через Ollama.\n"
-            "Напиши мне любой вопрос 🙂",
-            message_id,
-        )
-        return
-
-    if text.startswith("/help"):
-        send_message(
-            chat_id,
-            "Я использую локальную модель (Ollama) для ответа на твои сообщения.\n"
-            "Просто напиши текст — я подумаю и отвечу.",
-            message_id,
-        )
-        return
-
-    # Можно сразу ответить, что думаем (опционально)
-    thinking_msg = None
-    try:
-        thinking_resp = requests.post(
-            f"{TELEGRAM_API_URL}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": "Думаю над ответом 🤔 (локальная модель)...",
-                "reply_to_message_id": message_id,
-            },
-        )
-        thinking_resp.raise_for_status()
-        thinking_data = thinking_resp.json()
-        thinking_msg = thinking_data.get("result", {}).get("message_id")
-    except Exception:
-        pass
-
-    try:
-        answer = ask_ollama(text)
-    except Exception as e:
-        send_message(chat_id, f"Ошибка при обращении к локальной модели:\n{e}", message_id)
-        return
-
-    send_message(chat_id, answer, message_id)
+<script>
+async function send() {
+    const message = document.getElementById("msg").value;
+    const resp = await fetch("/", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({message})
+    });
+    const data = await resp.json();
+    document.getElementById("response").innerText = data.reply;
+}
+</script>
+</body>
+</html>
+"""
 
 
-def main() -> None:
-    print("Бот запущен. Ожидаю сообщения...")
-    last_update_id: int | None = None
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        # отдаём HTML страницу
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(HTML_PAGE.encode("utf-8"))
 
-    while True:
-        try:
-            updates = get_updates(offset=last_update_id + 1 if last_update_id is not None else None)
-            for update in updates:
-                last_update_id = update["update_id"]
-                handle_update(update)
-        except KeyboardInterrupt:
-            print("Останавливаю бота...")
-            break
-        except Exception as e:
-            print(f"Ошибка в основном цикле: {e}")
-            time.sleep(5)
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+        data = json.loads(body.decode("utf-8"))
+
+        prompt = data["message"]
+        reply = ask_ollama(prompt)
+
+        result = json.dumps({"reply": reply}).encode("utf-8")
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(result)
+
+
+def run():
+    server = HTTPServer(("0.0.0.0", 8000), Handler)
+    print("Browser chat running on: http://0.0.0.0:8000")
+    server.serve_forever()
 
 
 if __name__ == "__main__":
-    main()
+    run()
