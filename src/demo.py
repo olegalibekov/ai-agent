@@ -23,8 +23,10 @@ def demo_csv_analysis():
     analytics.load_csv("example_errors.csv")
     
     questions = [
-        "Какая ошибка встречается чаще всего?",
-        "На каком экране больше всего ошибок?",
+        "Which error is most common?",
+        "Which screen has the most errors?",
+        # "Какая ошибка встречается чаще всего?",
+        # "На каком экране больше всего ошибок?",
         # "Сколько критических (critical) ошибок?",
     ]
     
@@ -64,7 +66,8 @@ def demo_logs_analysis():
     
     questions = [
         # "Какие ERROR сообщения повторяются чаще всего?",
-        "Есть ли критические проблемы с производительностью?",
+        # "Есть ли критические проблемы с производительностью?",
+        "Are there any critical performance issues?",
         # "Какие проблемы с подключениями?",
     ]
     
@@ -77,7 +80,7 @@ def demo_logs_analysis():
 
 def main():
     """Запуск всех демонстраций"""
-    print("⚙️  Используется модель: llama3.1:8b-instruct-q2_K")
+    print("⚙️ Используется модель: llama3.1:8b-instruct-q2_K")
 
     input("Нажмите Enter для начала демонстрации...")
     
