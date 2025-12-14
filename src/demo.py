@@ -77,7 +77,7 @@ def demo_logs_analysis():
 
 def main():
     """Запуск всех демонстраций"""
-    print("\n⚙️  Используется модель: llama3.1:8b-instruct-q2_K")
+    print("⚙️  Используется модель: llama3.1:8b-instruct-q2_K")
 
     input("Нажмите Enter для начала демонстрации...")
     
