@@ -124,22 +124,22 @@ class LocalAnalytics:
             return "Ошибка: данные не загружены. Используйте load_csv(), load_json() или load_logs()"
         
         # Формируем промпт для LLM
-        prompt = f"""Ты - аналитик данных. У тебя есть следующие данные:
+        prompt = f"""You're a data analyst. You have the following information:
 
-Общая информация:
-- Всего записей: {self.data_summary['total_records']}
-- Поля: {', '.join(self.data_summary.get('fields', []))}
+General information:
+- Total entries: {self.data_summary['total_records']}
+- Fields: {', '.join(self.data_summary.get('fields', []))}
 
-Примеры данных (первые 5 записей):
+Sample data (first 5 records):
 {json.dumps(self.data_summary['sample_records'], ensure_ascii=False, indent=2)}
 
-Статистика по полям:
+Statistics by fields:
 {json.dumps(self.data_summary.get('field_statistics', {}), ensure_ascii=False, indent=2)}
 
-Вопрос: {question}
+Question: {question}
 
-Проанализируй данные и дай краткий, конкретный ответ на вопрос. Если нужно, посчитай статистику по всем данным.
-Отвечай на русском языке."""
+Analyze the data and give a short, specific answer to the question. If necessary, calculate the statistics for all the data.
+Answer in English."""
 
         print("\n🤖 Анализирую данные...")
         answer = self.query_ollama(prompt)
