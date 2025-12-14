@@ -1,0 +1,21 @@
+timestamp,error_type,screen,user_id,severity
+2024-12-14 10:15:23,NetworkError,LoginScreen,user_1001,high
+2024-12-14 10:16:45,ValidationError,RegistrationScreen,user_1002,medium
+2024-12-14 10:18:12,NetworkError,ProfileScreen,user_1003,high
+2024-12-14 10:20:33,UIError,HomeScreen,user_1004,low
+2024-12-14 10:22:54,NetworkError,LoginScreen,user_1005,high
+2024-12-14 10:25:16,DatabaseError,SettingsScreen,user_1006,critical
+2024-12-14 10:27:38,ValidationError,RegistrationScreen,user_1007,medium
+2024-12-14 10:30:01,NetworkError,CartScreen,user_1008,high
+2024-12-14 10:32:23,UIError,ProductScreen,user_1009,low
+2024-12-14 10:34:45,NetworkError,LoginScreen,user_1010,high
+2024-12-14 10:37:07,AuthError,LoginScreen,user_1011,critical
+2024-12-14 10:39:29,ValidationError,CheckoutScreen,user_1012,medium
+2024-12-14 10:41:51,NetworkError,HomeScreen,user_1013,high
+2024-12-14 10:44:13,UIError,SearchScreen,user_1014,low
+2024-12-14 10:46:35,NetworkError,ProfileScreen,user_1015,high
+2024-12-14 10:48:57,DatabaseError,OrderHistoryScreen,user_1016,critical
+2024-12-14 10:51:19,ValidationError,RegistrationScreen,user_1017,medium
+2024-12-14 10:53:41,NetworkError,LoginScreen,user_1018,high
+2024-12-14 10:56:03,UIError,HomeScreen,user_1019,low
+2024-12-14 10:58:25,AuthError,LoginScreen,user_1020,critical
