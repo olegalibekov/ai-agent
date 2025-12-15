@@ -10,32 +10,34 @@ import os
 import os
 
 from dotenv import load_dotenv
+
 load_dotenv()
+
 
 def quiz_model_knowledge():
     """Ask the model questions about what it knows from config"""
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     print("🎓 CONFIG KNOWLEDGE QUIZ")
     print("Testing what Claude knows about you from your config")
-    print("="*70)
-    
+    print("=" * 70)
+
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print("\n⚠️  ANTHROPIC_API_KEY not set")
         print("\nShowing what WOULD be asked with your config...")
         show_quiz_preview()
         return
-    
+
     try:
         print("\n🤖 Initializing agent with John Doe config...")
         agent = PersonalizedClaudeAgent(
             config_path='personalization_config_john_doe.yaml'
         )
-        
-        print("\n" + "="*70)
+
+        print("\n" + "=" * 70)
         print("Let's test what Claude knows about John Doe!")
-        print("="*70)
-        
+        print("=" * 70)
+
         questions = [
             {
                 "category": "👤 Personal Identity",
@@ -158,25 +160,25 @@ def quiz_model_knowledge():
                 "config_source": "goals_and_interests.mid_term, .long_term"
             }
         ]
-        
+
         correct = 0
         total = len(questions)
-        
+
         for i, q in enumerate(questions, 1):
-            print(f"\n{'─'*70}")
+            print(f"\n{'─' * 70}")
             print(f"Question {i}/{total}: {q['category']}")
-            print(f"{'─'*70}")
+            print(f"{'─' * 70}")
             print(f"\n❓ {q['question']}")
             print(f"\n📋 Config Source: {q['config_source']}")
-            
+
             print(f"\n🤖 Claude's Answer:")
             response = agent.chat(q['question'], max_tokens=300)
             print(f"\n{response}")
-            
+
             print(f"\n✅ Expected Knowledge:")
             for knowledge in q['expected_knowledge']:
                 print(f"   • {knowledge}")
-            
+
             print(f"\n🔍 Verification:")
             # Check if key terms are in response
             response_lower = response.lower()
@@ -186,108 +188,108 @@ def quiz_model_knowledge():
                 key_term = knowledge.split(':')[-1].strip().lower()
                 if key_term in response_lower or any(word in response_lower for word in key_term.split()[:2]):
                     found_terms.append(knowledge)
-            
+
             if len(found_terms) >= len(q['expected_knowledge']) // 2:
                 print(f"   ✓ Claude demonstrated knowledge from config!")
                 correct += 1
             else:
                 print(f"   ⚠️ Claude's answer may have missed some config details")
-            
+
             input("\n⏎ Press Enter for next question...")
-        
-        print(f"\n{'='*70}")
+
+        print(f"\n{'=' * 70}")
         print(f"QUIZ RESULTS")
-        print(f"{'='*70}")
-        print(f"Score: {correct}/{total} ({correct*100//total}%)")
+        print(f"{'=' * 70}")
+        print(f"Score: {correct}/{total} ({correct * 100 // total}%)")
         print(f"\nClaude demonstrated knowledge from the config in {correct} out of {total} categories!")
         print(f"\n💡 This shows that your config is actively informing Claude's responses.")
-        print(f"{'='*70}")
-        
+        print(f"{'=' * 70}")
+
     except Exception as e:
         print(f"\n❌ Error: {e}")
 
 
 def show_quiz_preview():
     """Show what would be asked without API"""
-    
+
     print("\n📋 Loading John Doe config...")
     manager = PersonalizationManager('personalization_config_john_doe.yaml')
     profile = manager.get_user_profile()
     context = manager.get_current_context()
     goals = manager.get_goals()
-    
-    print(f"\n{'='*70}")
+
+    print(f"\n{'=' * 70}")
     print("QUIZ PREVIEW - Questions that WOULD be asked:")
-    print(f"{'='*70}")
-    
+    print(f"{'=' * 70}")
+
     quiz_items = [
-        ("👤 Personal Identity", 
+        ("👤 Personal Identity",
          "What is my name and role?",
          f"Expected: {profile.name}, {profile.role}"),
-        
-        ("💻 Tech Stack", 
+
+        ("💻 Tech Stack",
          "What technologies do I work with?",
          f"Expected: {profile.experience['primary']}"),
-        
-        ("💼 Current Project", 
+
+        ("💼 Current Project",
          "What project am I working on?",
          f"Expected: {context['work']['current_project']}"),
-        
-        ("🏗️ Architecture", 
+
+        ("🏗️ Architecture",
          "What architecture does my project use?",
          f"Expected: {context['work']['architecture']}"),
-        
-        ("📐 Code Style", 
+
+        ("📐 Code Style",
          "What are my code style preferences?",
          f"Expected: {', '.join(manager.get_code_style_preferences()[:3])}"),
-        
-        ("🛠️ Preferred Tools", 
+
+        ("🛠️ Preferred Tools",
          "What packages do I prefer?",
          f"Expected: {', '.join(manager.get_preferred_tools()['preferred_packages'][:3])}"),
-        
-        ("🔥 Recent Work", 
+
+        ("🔥 Recent Work",
          "What challenges have I worked on recently?",
          f"Expected: {context['recent_challenges'][0]}"),
-        
-        ("🚀 Learning Goals", 
+
+        ("🚀 Learning Goals",
          "What am I trying to learn?",
          f"Expected: {', '.join(goals['short_term'][:2])}"),
-        
-        ("💬 Communication", 
+
+        ("💬 Communication",
          "How do I like to communicate?",
          f"Expected: {', '.join(manager.get_communication_style()[:2])}"),
-        
-        ("🎓 Learning Style", 
+
+        ("🎓 Learning Style",
          "How do I prefer to learn?",
          f"Expected: Hands-on, project-based"),
     ]
-    
+
     for i, (category, question, expected) in enumerate(quiz_items, 1):
         print(f"\n{i}. {category}")
         print(f"   Question: {question}")
         print(f"   {expected}")
-    
-    print(f"\n{'='*70}")
+
+    print(f"\n{'=' * 70}")
     print("💡 With API key, Claude would answer each question using config!")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
 
 def rapid_fire_test():
     """Quick rapid-fire test of config knowledge"""
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     print("⚡ RAPID FIRE CONFIG TEST")
-    print("="*70)
-    
+    print("=" * 70)
+
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print("\n⚠️  Requires ANTHROPIC_API_KEY")
         return
-    
+
     try:
         agent = PersonalizedClaudeAgent(
             config_path='personalization_config_john_doe.yaml'
         )
-        
+
         rapid_questions = [
             ("What's my name?", "John Doe"),
             ("What languages do I use?", "Python, JavaScript"),
@@ -300,36 +302,36 @@ def rapid_fire_test():
             ("How do I learn?", "hands-on"),
             ("Career goal?", "senior engineer"),
         ]
-        
+
         print("\n🔥 Asking 10 quick questions...")
-        
+
         for i, (question, expected_key) in enumerate(rapid_questions, 1):
             print(f"\n{i}. ❓ {question}")
             response = agent.chat(question, max_tokens=100)
-            
+
             # Check if expected key is in response
             if expected_key.lower() in response.lower():
                 print(f"   ✅ Correct! (Found: {expected_key})")
             else:
                 print(f"   ⚠️  Answer: {response[:100]}...")
-        
-        print(f"\n{'='*70}")
+
+        print(f"\n{'=' * 70}")
         print("✅ Rapid fire test complete!")
-        print(f"{'='*70}")
-        
+        print(f"{'=' * 70}")
+
     except Exception as e:
         print(f"❌ Error: {e}")
 
 
 def compare_with_without_config():
     """Show difference in responses with vs without config"""
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     print("⚖️  WITH vs WITHOUT CONFIG COMPARISON")
-    print("="*70)
-    
+    print("=" * 70)
+
     print("\n📝 Question: 'What HTTP library should I use?'")
-    
+
     print("\n❌ WITHOUT CONFIG (Generic):")
     print("─" * 70)
     print("""
@@ -347,14 +349,14 @@ For HTTP requests, popular options include:
 
 Choose based on your needs and environment.
     """)
-    
+
     print("\n✅ WITH JOHN DOE CONFIG (Personalized):")
     print("─" * 70)
-    
+
     manager = PersonalizationManager('personalization_config_john_doe.yaml')
     profile = manager.get_user_profile()
     tools = manager.get_preferred_tools()
-    
+
     print(f"""
 For YOUR stack (Python/Django + JavaScript/React):
 
@@ -380,7 +382,7 @@ response = requests.get(
 )
 ```
     """)
-    
+
     print("\n📊 KEY DIFFERENCES:")
     print("─" * 70)
     print("WITHOUT CONFIG:")
@@ -393,20 +395,20 @@ response = requests.get(
     print(f"  ✓ Recommends your preferences: {', '.join(tools['preferred_packages'][:2])}")
     print(f"  ✓ Provides examples for your project")
     print(f"  ✓ Considers your architecture")
-    print("="*70)
+    print("=" * 70)
 
 
 if __name__ == "__main__":
     print("\n" + "🎯 CONFIG KNOWLEDGE TESTING ".center(70, "="))
-    
+
     print("\nChoose test mode:")
     print("1. Full Quiz (asks 12 detailed questions)")
     print("2. Rapid Fire (10 quick questions)")
     print("3. Comparison (with vs without config)")
     print("4. Preview (see questions without API)")
-    
+
     choice = input("\nEnter choice (1-4) or press Enter for all: ").strip()
-    
+
     if choice == "1":
         quiz_model_knowledge()
     elif choice == "2":
@@ -419,22 +421,22 @@ if __name__ == "__main__":
         # Run all
         show_quiz_preview()
         compare_with_without_config()
-        
+
         if os.environ.get("ANTHROPIC_API_KEY"):
-            print("\n" + "="*70)
+            print("\n" + "=" * 70)
             print("API key found! Running live tests...")
-            print("="*70)
+            print("=" * 70)
             rapid_fire_test()
-            
+
             do_full = input("\nRun full quiz? (y/n): ").lower()
             if do_full == 'y':
                 quiz_model_knowledge()
         else:
             print("\n💡 Set ANTHROPIC_API_KEY to run live tests with Claude!")
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     print("🎓 CONCLUSION")
-    print("="*70)
+    print("=" * 70)
     print("""
 The config file IS the agent's memory and knowledge base.
 
@@ -446,4 +448,4 @@ With the config: Claude knows YOU
 
 That's the power of personalization! 🎯
     """)
-    print("="*70)
+    print("=" * 70)
