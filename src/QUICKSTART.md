@@ -1,99 +1,82 @@
-# 🚀 Быстрый старт
+# 🚀 Quick Start Guide
 
-## Что это?
+## Setup in 3 minutes
 
-Локальный аналитик данных с использованием LLM. Анализирует CSV, JSON и логи полностью на вашем компьютере без облака.
-
-## Как использовать?
-
-### 1. Тестирование (без LLM)
+### 1️⃣ Copy and fill config
 ```bash
-python3 test.py
-```
-Показывает как загружаются данные и какую статистику можно извлечь.
-
-### 2. Демонстрация (с LLM)
-```bash
-python3 demo.py
-```
-Автоматически задает вопросы к примерам данных. Требует запущенный Ollama.
-
-### 3. Интерактивный режим (с LLM)
-```bash
-python3 analytics.py
-```
-Позволяет задавать свои вопросы к любым данным.
-
-## Примеры вопросов
-
-### CSV с ошибками (`example_errors.csv`):
-- "Какая ошибка встречается чаще всего?"
-- "На каком экране больше всего проблем?"
-- "Сколько критических ошибок?"
-
-### JSON с сессиями (`example_sessions.json`):
-- "Где больше всего пользователей теряется?"
-- "Какая конверсия?"
-- "Какой путь до покупки?"
-
-### Логи (`example_app.log`):
-- "Какие ошибки повторяются чаще всего?"
-- "Есть ли критические проблемы?"
-- "Что происходило между 08:00 и 08:10?"
-
-## Требования
-
-- Python 3.8+
-- Ollama (для demo.py и analytics.py)
-- Любая модель: llama3.1, gemma3
-
-## Установка Ollama (если нужно)
-
-```bash
-# Linux/Mac
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Запуск
-ollama serve
-
-# Скачать модель
-ollama pull llama3.1:8b-instruct-q2_K
+cp personalization_config_john_doe.yaml personalization_config_john_doe.yaml
 ```
 
-## Использование с своими данными
+Edit `personalization_config_john_doe.yaml` with your information:
+- Your name, role, tech stack
+- Current project details
+- Code style preferences
+- Goals and interests
 
+### 2️⃣ Install dependencies
+```bash
+pip install anthropic pyyaml
+```
+
+### 3️⃣ Set API key
+```bash
+export ANTHROPIC_API_KEY="your-key-here"
+```
+
+### 4️⃣ Use the agent
 ```python
-from analytics import LocalAnalytics
+from personalized_agent_example import PersonalizedAgent
 
-# Создать аналитик
-analytics = LocalAnalytics(model_name="llama3.1:8b-instruct-q2_K")
-
-# Загрузить данные
-analytics.load_csv("ваш_файл.csv")
-# или
-analytics.load_json("ваш_файл.json")
-# или
-analytics.load_logs("ваш_файл.log")
-
-# Задать вопрос
-answer = analytics.analyze("ваш вопрос?")
-print(answer)
+agent = PersonalizedAgent()
+response = agent.chat("Help me with this code")
+print(response)
 ```
 
-## Файлы в проекте
+## What makes it personalized?
 
-- `analytics.py` - основная логика
-- `demo.py` - автоматическая демонстрация
-- `test.py` - тестирование без LLM
-- `example_*.csv/json/log` - примеры данных
-- `README.md` - полная документация
-- `QUICKSTART.md` - этот файл
+The agent will:
+- ✅ Know your tech stack and preferences
+- ✅ Remember your recent challenges
+- ✅ Suggest packages you prefer
+- ✅ Match your communication style
+- ✅ Focus on your priorities (performance, clean code, etc.)
 
-## Что дальше?
+## Example interaction
 
-1. Запустите `test.py` чтобы увидеть как работает загрузка данных
-2. Запустите `demo.py` для автоматической демонстрации с LLM
-3. Используйте `analytics.py` для анализа своих данных
-4. Читайте `README.md` для подробной информации
+**Without personalization:**
+```
+User: Review my code
+Agent: Here's a generic review...
+```
 
-Enjoy! 🎉
+**With personalization:**
+```
+User: Review my code
+Agent: [Checks your architecture patterns]
+       [Looks for code duplication - your priority]
+       [Suggests your preferred packages]
+       [Matches your direct communication style]
+```
+
+## Test without API
+
+Run the standalone demo to see personalization in action:
+
+```bash
+python demo_standalone.py
+```
+
+This shows how the system loads your profile, generates prompts, and makes context-aware decisions.
+
+## Next steps
+
+1. **Fill the config** with as much detail as you want
+2. **Run demo** to verify it loads correctly
+3. **Use PersonalizedAgent** for real conversations
+4. **Update config** as your preferences evolve
+
+The more detailed your config, the better the personalization!
+
+---
+
+**Full documentation:** See [README.md](README.md) for complete guide and examples.

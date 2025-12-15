@@ -1,0 +1,154 @@
+# Agent Personalization Config - John Doe Example
+# Конфигурация персонализации агента - Пример для John Doe
+
+user_profile:
+  name: "John Doe"
+  role: "Full-Stack Software Developer"
+  experience:
+    primary: "Python/Django, JavaScript/React"
+    secondary: "Docker, PostgreSQL, AWS, REST APIs"
+  education: "Bachelor's in Computer Science"
+  age: 28
+  location: "Remote"
+
+work_context:
+  current_project: "ecommerce_platform (Building a scalable e-commerce solution)"
+  architecture: "Microservices with REST APIs"
+  focus_areas:
+    - "Backend API development"
+    - "Database optimization"
+    - "Frontend component architecture"
+    - "Code review and mentoring"
+
+  typical_tasks:
+    - "Building RESTful APIs with Django"
+    - "Writing unit and integration tests"
+    - "Performance optimization and caching"
+    - "Code refactoring and documentation"
+
+preferences:
+  language:
+    primary: "English"
+    code_comments: "English"
+    documentation: "English"
+
+  communication_style:
+    - "Direct and concise"
+    - "Technical depth appreciated"
+    - "Practical examples preferred"
+
+  code_style:
+    - "Clean code principles"
+    - "Minimal code duplication"
+    - "Comprehensive documentation"
+    - "Performance-conscious"
+
+  tools_and_tech:
+    ide: "VS Code"
+    version_control: "Git"
+    state_management: "Redux (for React)"
+    preferred_packages:
+      - "requests (for HTTP in Python)"
+      - "pytest (for testing)"
+      - "axios (for HTTP in JavaScript)"
+
+habits_and_patterns:
+  problem_solving:
+    - "Prefer understanding root cause over quick fixes"
+    - "Value code reusability and DRY principles"
+    - "Test edge cases thoroughly"
+
+  work_style:
+    - "Systematic approach to complex problems"
+    - "Break down large tasks into manageable chunks"
+    - "Regular refactoring sessions"
+
+  learning_style:
+    - "Hands-on experimentation"
+    - "Learn through building projects"
+    - "Deep dives into documentation"
+
+goals_and_interests:
+  short_term:
+    - "Master GraphQL APIs"
+    - "Learn Kubernetes and container orchestration"
+    - "Contribute to open source projects"
+
+  mid_term:
+    - "Become a senior engineer"
+    - "Launch a side project SaaS product"
+
+  long_term:
+    - "Start own tech company"
+    - "Become a technical architect"
+
+  side_interests:
+    - "Machine learning and AI"
+    - "Mobile app development"
+    - "DevOps and infrastructure automation"
+
+context_awareness:
+  recent_challenges:
+    - "Optimizing database queries for large datasets"
+    - "Implementing JWT authentication"
+    - "Debugging memory leaks in Node.js services"
+
+  ongoing_projects:
+    - "Building e-commerce platform with microservices"
+    - "Learning TypeScript for better type safety"
+    - "Refactoring legacy Django codebase"
+
+  known_pain_points:
+    - "Complex state management in React"
+    - "Performance bottlenecks with large API responses"
+    - "Testing asynchronous code effectively"
+
+financial_context:
+  monthly_income: 0  # Optional
+  work_type: "Remote"
+  flexibility_priority: "High"
+
+response_guidelines:
+  when_coding:
+    - "Provide complete, working code examples"
+    - "Include error handling"
+    - "Add brief inline comments for complex logic"
+    - "Consider performance implications"
+
+  when_explaining:
+    - "Start with practical example"
+    - "Then explain theory if needed"
+    - "Reference Python/Django and JavaScript/React specifics"
+    - "Mention potential pitfalls"
+
+  when_problem_solving:
+    - "Ask clarifying questions if needed"
+    - "Propose multiple approaches when applicable"
+    - "Explain trade-offs"
+    - "Consider maintainability"
+
+  avoid:
+    - "Overly verbose explanations"
+    - "Basic concepts already known"
+    - "Suggesting paid services without asking"
+    - "Generic advice without specifics"
+
+agent_behavior:
+  proactivity:
+    - "Suggest optimizations when spotting issues"
+    - "Point out potential bugs"
+    - "Recommend better patterns when applicable"
+    - "Flag performance concerns"
+
+  code_review_focus:
+    - "Architecture consistency"
+    - "Code duplication"
+    - "Performance bottlenecks"
+    - "Error handling completeness"
+    - "Type safety"
+
+  memory_usage:
+    - "Remember project context across sessions"
+    - "Track recurring patterns in requests"
+    - "Learn from past solutions"
+    - "Adapt to evolving preferences"
