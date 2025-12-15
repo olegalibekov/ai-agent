@@ -8,9 +8,6 @@ from personalization_manager import PersonalizationManager
 from typing import List, Dict, Any, Optional
 import os
 
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class PersonalizedClaudeAgent:
     """
@@ -26,7 +23,7 @@ class PersonalizedClaudeAgent:
     def __init__(
         self, 
         api_key: Optional[str] = None, 
-        config_path: str = "personalization_config_john_doe.yaml",
+        config_path: str = "personalization_config.yaml",
         model: str = "claude-sonnet-4-20250514"
     ):
         """
@@ -45,9 +42,20 @@ class PersonalizedClaudeAgent:
         # Build personalized system prompt
         self.system_prompt = self.personalization.build_system_prompt()
         
-        print(f"✓ Initialized PersonalizedClaudeAgent")
-        print(f"  Model: {self.model}")
-        print(f"  User: {self.personalization.get_user_profile().name}")
+        # Display initialization info
+        profile = self.personalization.get_user_profile()
+        context = self.personalization.get_current_context()
+        
+        print(f"\n{'='*70}")
+        print(f"✓ PersonalizedClaudeAgent Initialized")
+        print(f"{'='*70}")
+        print(f"👤 User: {profile.name}")
+        print(f"📋 Role: {profile.role}")
+        print(f"💼 Project: {context['work']['current_project']}")
+        print(f"🏗️  Architecture: {context['work']['architecture']}")
+        print(f"🤖 Model: {self.model}")
+        print(f"📝 Config: {config_path}")
+        print(f"{'='*70}\n")
     
     def chat(
         self, 
@@ -147,16 +155,19 @@ class PersonalizedClaudeAgent:
     def _enhance_message(self, message: str) -> str:
         """Enhance message with context-specific instructions"""
         enhancements = []
+        applied_personalizations = []
         
         # Check for code review request
         if any(keyword in message.lower() for keyword in ['review', 'check', 'look at', 'analyze']):
             guidelines = self.personalization.get_response_guidelines()
             code_prefs = self.personalization.get_code_style_preferences()
             enhancements.append(f"\n\n[Code review focus: {', '.join(code_prefs[:3])}]")
+            applied_personalizations.append("Code review preferences")
         
         # Check for optimization opportunity
         if self.personalization.should_suggest_optimization(message):
             enhancements.append("\n\n[Note: Feel free to suggest optimizations if you spot issues]")
+            applied_personalizations.append("Proactive optimization suggestions")
         
         # Check for package recommendations needed
         if 'package' in message.lower() or 'library' in message.lower():
@@ -164,6 +175,14 @@ class PersonalizedClaudeAgent:
             preferred = tools.get('preferred_packages', [])
             if preferred:
                 enhancements.append(f"\n\n[Preferred packages: {', '.join(preferred[:3])}]")
+                applied_personalizations.append("Preferred packages")
+        
+        # Display applied personalizations
+        if applied_personalizations:
+            print(f"\n🎯 Applied personalizations:")
+            for p in applied_personalizations:
+                print(f"   ✓ {p}")
+            print()
         
         return message + ''.join(enhancements)
     
