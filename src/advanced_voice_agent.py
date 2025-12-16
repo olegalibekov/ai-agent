@@ -42,7 +42,7 @@ class AdvancedVoiceAgent:
         self.recognizer.dynamic_energy_threshold = True
         self.recognizer.pause_threshold = 0.8
         
-        print("🎤 Расширенный голосовой агент инициализирован")
+        print("🎤 Голосовой агент инициализирован")
         self._calibrate_microphone()
     
     def _calibrate_microphone(self):
