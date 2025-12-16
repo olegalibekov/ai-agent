@@ -164,7 +164,7 @@ class AdvancedVoiceAgent:
         print("\n" + "="*60)
         print("📊 МЕТРИКИ РАБОТЫ АГЕНТА")
         print("="*60)
-        print(f"⏱️  Время работы: {runtime}")
+        print(f"⏱️ Время работы: {runtime}")
         print(f"✅ Обработано запросов: {self.metrics['queries_processed']}")
         print(f"❌ Ошибок распознавания: {self.metrics['recognition_errors']}")
         print(f"❌ Ошибок LLM: {self.metrics['llm_errors']}")
