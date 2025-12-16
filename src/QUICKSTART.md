@@ -1,82 +1,208 @@
-# 🚀 Quick Start Guide
+# 🚀 Quick Start Guide - Голосовой Агент
 
-## Setup in 3 minutes
+## Минимальная установка за 5 минут
 
-### 1️⃣ Copy and fill config
-```bash
-cp personalization_config_john_doe.yaml personalization_config_john_doe.yaml
-```
+### Шаг 1: Клонировать/скачать файлы
 
-Edit `personalization_config_john_doe.yaml` with your information:
-- Your name, role, tech stack
-- Current project details
-- Code style preferences
-- Goals and interests
+Вам нужны эти файлы:
+- `voice_agent.py` - основной агент
+- `requirements.txt` - зависимости
 
-### 2️⃣ Install dependencies
-```bash
-pip install anthropic pyyaml
-```
-
-### 3️⃣ Set API key
-```bash
-export ANTHROPIC_API_KEY="your-key-here"
-```
-
-### 4️⃣ Use the agent
-```python
-from personalized_agent_example import PersonalizedAgent
-
-agent = PersonalizedAgent()
-response = agent.chat("Help me with this code")
-print(response)
-```
-
-## What makes it personalized?
-
-The agent will:
-- ✅ Know your tech stack and preferences
-- ✅ Remember your recent challenges
-- ✅ Suggest packages you prefer
-- ✅ Match your communication style
-- ✅ Focus on your priorities (performance, clean code, etc.)
-
-## Example interaction
-
-**Without personalization:**
-```
-User: Review my code
-Agent: Here's a generic review...
-```
-
-**With personalization:**
-```
-User: Review my code
-Agent: [Checks your architecture patterns]
-       [Looks for code duplication - your priority]
-       [Suggests your preferred packages]
-       [Matches your direct communication style]
-```
-
-## Test without API
-
-Run the standalone demo to see personalization in action:
+### Шаг 2: Установить зависимости
 
 ```bash
-python demo_standalone.py
+pip install -r requirements.txt
 ```
 
-This shows how the system loads your profile, generates prompts, and makes context-aware decisions.
+**Если возникли проблемы:**
 
-## Next steps
+**Linux:**
+```bash
+sudo apt-get install portaudio19-dev python3-pyaudio
+pip install -r requirements.txt
+```
 
-1. **Fill the config** with as much detail as you want
-2. **Run demo** to verify it loads correctly
-3. **Use PersonalizedAgent** for real conversations
-4. **Update config** as your preferences evolve
+**macOS:**
+```bash
+brew install portaudio
+pip install -r requirements.txt
+```
 
-The more detailed your config, the better the personalization!
+**Windows:**
+```bash
+pip install pipwin
+pipwin install pyaudio
+pip install SpeechRecognition anthropic
+```
+
+### Шаг 3: Настроить API ключ
+
+```bash
+export ANTHROPIC_API_KEY='sk-ant-api03-...'
+```
+
+**Для постоянного хранения:**
+
+**Linux/macOS:**
+```bash
+echo 'export ANTHROPIC_API_KEY="sk-ant-api03-..."' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Windows PowerShell:**
+```powershell
+[System.Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', 'sk-ant-api03-...', 'User')
+```
+
+### Шаг 4: Запустить!
+
+```bash
+python voice_agent.py
+```
+
+## ✨ Первые команды
+
+После запуска попробуйте:
+
+1. **"Посчитай факториал пяти"** - математика
+2. **"Дай определение машинного обучения"** - объяснения
+3. **"Скажи анекдот"** - развлечения
+4. **"Выход"** - остановить агент
+
+## 🔧 Диагностика проблем
+
+### Проблема: "No module named 'speech_recognition'"
+**Решение:**
+```bash
+pip install SpeechRecognition
+```
+
+### Проблема: "No module named 'pyaudio'"
+**Решение:** См. Шаг 2 выше для вашей ОС
+
+### Проблема: "No microphone available"
+**Диагностика:**
+```bash
+python utils.py list
+```
+
+### Проблема: "API key not found"
+**Решение:**
+```bash
+echo $ANTHROPIC_API_KEY  # Проверить
+export ANTHROPIC_API_KEY='your-key'  # Установить
+```
+
+### Проблема: Плохое распознавание речи
+**Решение:**
+```bash
+python utils.py calibrate 5  # Калибровка
+```
+
+## 📊 Режимы работы
+
+### Базовый агент (простой)
+```bash
+python voice_agent.py
+```
+
+### Расширенный агент (с историей)
+```bash
+python advanced_voice_agent.py
+```
+
+Дополнительные команды:
+- **"Метрики"** - статистика
+- **"История"** - последние диалоги
+
+### Тестирование (без микрофона)
+```bash
+python test_voice_agent.py
+```
+
+## 🎯 Примеры использования
+
+### Математика
+- "Посчитай сумму от одного до ста"
+- "Реши уравнение x в квадрате плюс пять x плюс шесть равно нулю"
+- "Что такое производная"
+
+### Программирование
+- "Объясни что такое рекурсия"
+- "В чем разница между list и tuple"
+- "Что такое сложность алгоритма"
+
+### Общие вопросы
+- "Кто написал Войну и мир"
+- "Столица Франции"
+- "Что такое квантовая физика"
+
+### Советы
+- "Посоветуй книгу по Python"
+- "Как изучать машинное обучение"
+- "Что посмотреть из фантастики"
+
+## 💡 Полезные команды
+
+```bash
+# Проверить всё сразу
+python utils.py all
+
+# Список микрофонов
+python utils.py list
+
+# Тест микрофона #0
+python utils.py test 0
+
+# Проверка зависимостей
+python utils.py deps
+
+# Демонстрация
+python demo_voice_agent.py
+```
+
+## 🆘 Частые вопросы
+
+**Q: Агент не слышит мою речь?**
+A: Проверьте микрофон, увеличьте громкость, запустите калибровку
+
+**Q: Распознается не тот язык?**
+A: В коде измените `language='ru-RU'` на нужный язык
+
+**Q: Тратится много токенов?**
+A: Используйте базовый агент без истории (`voice_agent.py`)
+
+**Q: Можно ли использовать локально?**
+A: Для распознавания нужен интернет (Google API), для LLM - да (но это другой проект)
+
+## 📚 Дальнейшее чтение
+
+- `README.md` - полная документация
+- `demo_voice_agent.py --examples` - больше примеров
+- `demo_voice_agent.py --architecture` - архитектура
+
+## ✅ Чеклист запуска
+
+- [ ] Python 3.7+ установлен
+- [ ] Зависимости установлены
+- [ ] API ключ настроен
+- [ ] Микрофон работает
+- [ ] Интернет подключен
+- [ ] `python voice_agent.py` запускается
+- [ ] Голос распознается
+
+Если все галочки стоят - вы готовы! 🎉
+
+## 🎓 Дальнейшие улучшения
+
+После того как всё работает, попробуйте:
+
+1. Добавить Text-to-Speech для голосовых ответов
+2. Использовать локальную модель распознавания (Whisper)
+3. Сделать веб-интерфейс
+4. Добавить wake word detection
+5. Интегрировать с умным домом
 
 ---
 
-**Full documentation:** See [README.md](README.md) for complete guide and examples.
+**Возникли проблемы?** Запустите `python utils.py all` для диагностики!
