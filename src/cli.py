@@ -240,9 +240,6 @@ python cli.py stats
 - MCP инструменты
 - Параметры голоса
 - Настройки RAG
-
-## Документация:
-https://github.com/your-repo/god-agent
 """
     console.print(Panel(info_text, title="ℹ️ God Agent"))
 
