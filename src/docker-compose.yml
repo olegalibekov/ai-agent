@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  god-agent:
+    build: .
+    container_name: god_agent
+    
+    # API ключи из .env
+    env_file:
+      - .env
+    
+    # Монтирование данных
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./workspace:/app/workspace
+      - ./documents:/app/documents
+      - ./config.yaml:/app/config.yaml
+    
+    # Интерактивный режим
+    stdin_open: true
+    tty: true
+    
+    # Для голосового режима (опционально)
+    # devices:
+    #   - /dev/snd:/dev/snd
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Healthcheck
+    healthcheck:
+      test: ["CMD", "python", "cli.py", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    # Ресурсы
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+# Сети
+networks:
+  default:
+    name: god_agent_network

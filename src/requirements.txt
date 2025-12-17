@@ -1,3 +1,38 @@
-SpeechRecognition==3.10.1
-anthropic==0.39.0
-pyaudio==0.2.14
+# Core AI
+anthropic>=0.40.0
+openai>=1.54.0
+
+# Voice & Audio
+openai-whisper>=20231117
+pyaudio>=0.2.14
+pydub>=0.25.1
+SpeechRecognition>=3.10.0
+
+# RAG & Vector Store
+langchain>=0.1.0
+langchain-community>=0.0.10
+faiss-cpu>=1.7.4
+sentence-transformers>=2.2.2
+chromadb>=0.4.22
+
+# MCP Integration
+mcp>=0.1.0
+httpx>=0.26.0
+websockets>=12.0
+
+# Document Processing
+pypdf>=3.17.4
+python-docx>=1.1.0
+markdown>=3.5.1
+beautifulsoup4>=4.12.2
+
+# Utils
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+pyyaml>=6.0.1
+rich>=13.7.0
+typer>=0.9.0
+
+# Database
+sqlalchemy>=2.0.23
+sqlite3worker>=1.1.7

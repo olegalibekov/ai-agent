@@ -1,0 +1,127 @@
+# God Agent Configuration
+
+agent:
+  name: "God Agent"
+  version: "1.0.0"
+  personality: "professional assistant"
+  
+# AI Models
+models:
+  main:
+    provider: "anthropic"
+    model: "claude-sonnet-4-20250514"
+    max_tokens: 4096
+    temperature: 0.7
+  
+  voice:
+    provider: "openai"
+    model: "whisper-1"
+    language: "ru"
+  
+  embeddings:
+    model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+    dimension: 768
+
+# RAG Configuration
+rag:
+  vector_store: "faiss"
+  chunk_size: 1000
+  chunk_overlap: 200
+  top_k: 5
+  similarity_threshold: 0.7
+  
+  storage:
+    path: "./data/vector_store"
+    index_name: "god_agent_memory"
+
+# MCP Tools
+mcp:
+  enabled: true
+  tools:
+    - name: "filesystem"
+      enabled: true
+      config:
+        allowed_directories: ["./workspace", "./documents"]
+    
+    - name: "web_search"
+      enabled: true
+      config:
+        max_results: 5
+    
+    - name: "calendar"
+      enabled: true
+    
+    - name: "email"
+      enabled: false
+      config:
+        smtp_server: ""
+        smtp_port: 587
+    
+    - name: "github"
+      enabled: true
+      config:
+        token: "${GITHUB_TOKEN}"
+    
+    - name: "slack"
+      enabled: false
+      config:
+        token: "${SLACK_TOKEN}"
+
+# Voice Configuration
+voice:
+  enabled: true
+  input:
+    sample_rate: 16000
+    channels: 1
+    chunk_duration: 5  # seconds
+    silence_threshold: 500
+    silence_duration: 1.5
+  
+  wake_word:
+    enabled: false
+    phrase: "агент"
+  
+  output:
+    enabled: false
+    voice: "alloy"  # OpenAI TTS
+
+# Memory & Learning
+memory:
+  short_term:
+    enabled: true
+    max_messages: 20
+  
+  long_term:
+    enabled: true
+    database: "./data/memory.db"
+    auto_save: true
+  
+  context:
+    enabled: true
+    max_tokens: 50000
+
+# Features
+features:
+  auto_summarization: true
+  proactive_suggestions: true
+  task_tracking: true
+  learning_from_feedback: true
+  context_awareness: true
+
+# Logging
+logging:
+  level: "INFO"
+  file: "./logs/god_agent.log"
+  console: true
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Security
+security:
+  require_confirmation:
+    - "file_delete"
+    - "email_send"
+    - "payment"
+    - "system_command"
+  
+  sensitive_data_filter: true
+  audit_log: true
